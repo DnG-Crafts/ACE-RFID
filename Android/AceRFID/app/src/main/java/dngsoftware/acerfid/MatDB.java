@@ -49,4 +49,8 @@ public interface MatDB {
    @SuppressWarnings("UnusedDeclaration")
    @Query("SELECT * FROM filament_table WHERE filament_name = :filamentName")
    Filament getFilamentByName(String filamentName);
+
+   @SuppressWarnings("UnusedDeclaration")
+   @Query("SELECT * FROM filament_table WHERE filament_vendor || ' ' || filament_name = :descName")
+   Filament getFilamentByDesc(String descName);
 }

@@ -170,13 +170,13 @@ public class Utils {
         List<Filament> items = db.getAllItems();
         String[] materials = new String[items.size()];
         for (int i = 0; i < items.size(); i++) {
-            materials[i] = items.get(i).filamentName;
+            materials[i] = items.get(i).filamentVendor + " " + items.get(i).filamentName;
         }
         return materials;
     }
 
     public static int[] GetTemps(MatDB db, String materialName) {
-        Filament item = db.getFilamentByName(materialName);
+        Filament item = db.getFilamentByDesc(materialName);
         String[] temps = item.filamentParam.split("\\|");
         int[] tempArray = new int[temps.length];
         for (int i = 0; i < temps.length; i++) {
@@ -192,7 +192,7 @@ public class Utils {
     public static byte[] GetSku(MatDB db, String materialName) {
         byte[] skuData = new byte[20];
         Arrays.fill(skuData, (byte) 0);
-        Filament item = db.getFilamentByName(materialName);
+        Filament item = db.getFilamentByDesc(materialName);
         String sku = item.filamentID;
         if (sku != null && !sku.isEmpty()) {
             System.arraycopy(sku.getBytes(), 0, skuData, 0, sku.getBytes().length);
@@ -203,12 +203,23 @@ public class Utils {
     public static byte[] GetBrand(MatDB db, String materialName) {
         byte[] brandData = new byte[20];
         Arrays.fill(brandData, (byte) 0);
-        Filament item = db.getFilamentByName(materialName);
+        Filament item = db.getFilamentByDesc(materialName);
         String brand = item.filamentVendor;
         if (brand != null && !brand.isEmpty()) {
             System.arraycopy(brand.getBytes(), 0, brandData, 0, brand.getBytes().length);
         }
         return brandData;
+    }
+
+    public static byte[] GetType(MatDB db, String materialName) {
+        byte[] typeData = new byte[20];
+        Arrays.fill(typeData, (byte) 0);
+        Filament item = db.getFilamentByDesc(materialName);
+        String type = item.filamentName;
+        if (type != null && !type.isEmpty()) {
+            System.arraycopy(type.getBytes(), 0, typeData, 0, type.getBytes().length);
+        }
+        return typeData;
     }
 
     public static String bytesToHex(byte[] data, boolean space) {
@@ -523,6 +534,7 @@ public class Utils {
             "PC",
             "PETG",
             "PLA",
+            "PLA+",
             "PLA-CF",
             "PVA",
             "PP",
@@ -547,6 +559,8 @@ public class Utils {
                 return new int[]{230, 250, 70, 90};
             case "PLA":
                 return new int[]{190, 230, 50, 60};
+            case "PLA+":
+                return new int[]{190, 230, 55, 65};
             case "PLA-CF":
                 return new int[]{210, 240, 45, 65};
             case "PVA":

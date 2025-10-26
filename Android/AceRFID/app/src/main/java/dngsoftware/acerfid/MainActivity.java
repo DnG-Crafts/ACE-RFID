@@ -4,6 +4,7 @@ import static android.view.View.TEXT_ALIGNMENT_CENTER;
 import dngsoftware.acerfid.databinding.ActivityMainBinding;
 import dngsoftware.acerfid.databinding.AddDialogBinding;
 import dngsoftware.acerfid.databinding.PickerDialogBinding;
+import static dngsoftware.acerfid.Utils.GetType;
 import static dngsoftware.acerfid.Utils.GetBrand;
 import static dngsoftware.acerfid.Utils.GetDefaultTemps;
 import static dngsoftware.acerfid.Utils.GetMaterialLength;
@@ -84,7 +85,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private NfcAdapter nfcAdapter;
     Tag currentTag = null;
     ArrayAdapter<String> madapter, sadapter;
-    String MaterialName, MaterialWeight = "1 KG", MaterialColor = "FF0000FF";
+    String descName, MaterialWeight = "1 KG", MaterialColor = "FF0000FF";
     Dialog pickerDialog, addDialog;
     AlertDialog inputDialog;
     int SelectedSize;
@@ -121,10 +122,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         main.deletebutton.setOnClickListener(view -> {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             builder.setTitle(R.string.delete_filament);
-            builder.setMessage(MaterialName);
+            builder.setMessage(descName);
             builder.setPositiveButton(R.string.delete, (dialog, which) -> {
-                if (matDb.getFilamentByName(MaterialName) != null) {
-                    matDb.deleteItem(matDb.getFilamentByName(MaterialName));
+                if (matDb.getFilamentByDesc(descName) != null) {
+                    matDb.deleteItem(matDb.getFilamentByDesc(descName));
                     loadMaterials(false);
                     dialog.dismiss();
                 }
@@ -263,10 +264,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         main.material.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
-                MaterialName = madapter.getItem(position);
-                assert MaterialName != null;
+                descName = madapter.getItem(position);
+                assert descName != null;
                 main.infotext.setText(String.format(Locale.getDefault(), getString(R.string.info_temps),
-                        GetTemps(matDb, MaterialName)[0], GetTemps(matDb, MaterialName)[1], GetTemps(matDb, MaterialName)[2], GetTemps(matDb, MaterialName)[3]));
+                        GetTemps(matDb, descName)[0], GetTemps(matDb, descName)[1], GetTemps(matDb, descName)[2], GetTemps(matDb, descName)[3]));
 
                 if (position <= 11){
                     main.editbutton.setVisibility(View.INVISIBLE);
@@ -282,7 +283,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             }
         });
         if (select) {
-            main.material.setSelection(madapter.getPosition(MaterialName));
+            main.material.setSelection(madapter.getPosition(descName));
         }
         else {
             main.material.setSelection(3);
@@ -340,8 +341,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 if (buff.array()[0] != (byte) 0x00) {
                     userSelect = true;
-                    MaterialName = new String(subArray(buff.array(), 44, 16), StandardCharsets.UTF_8).trim();
-                    main.material.setSelection(madapter.getPosition(MaterialName));
+                    descName = new String(subArray(buff.array(), 20, 16), StandardCharsets.UTF_8).trim() +
+                        "" +
+                        new String(subArray(buff.array(), 44, 16), StandardCharsets.UTF_8).trim();
+                    main.material.setSelection(madapter.getPosition(descName));
                     String color = parseColor(subArray(buff.array(), 65, 3));
                     String alpha = bytesToHex(subArray(buff.array(), 64, 1),false);
                     if (color.equals("010101")) {color = "000000";} // basic fix for anycubic setting black to transparent)
@@ -405,14 +408,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     nfcA.connect();
                 }
                 for (int i = 0; i < 5; i++) { //sku
-                    nfcAWritePage(nfcA, 5 + i, subArray(GetSku(matDb, MaterialName), i * 4, 4));
+                    nfcAWritePage(nfcA, 5 + i, subArray(GetSku(matDb, descName), i * 4, 4));
                 }
                 for (int i = 0; i < 5; i++) { //brand
-                    nfcAWritePage(nfcA, 10 + i, subArray(GetBrand(matDb, MaterialName), i * 4, 4));
+                    nfcAWritePage(nfcA, 10 + i, subArray(GetBrand(matDb, descName), i * 4, 4));
                 }
                 byte[] matData = new byte[20];
                 Arrays.fill(matData, (byte) 0);
-                System.arraycopy(MaterialName.getBytes(), 0, matData, 0, Math.min(20, MaterialName.length()));
+                System.arraycopy(GetType(matDb, descName), 0, matData, 0, Math.min(20, GetType(matDb, descName).length));
                 nfcAWritePage(nfcA, 15, subArray(matData, 0, 4));   //type
                 nfcAWritePage(nfcA, 16, subArray(matData, 4, 4));   //type
                 nfcAWritePage(nfcA, 17, subArray(matData, 8, 4));   //type
@@ -425,12 +428,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 nfcAWritePage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color))); //color
                 //ultralight.writePage(23, new byte[] {50, 0, 100, 0});   //more temps?
                 byte[] extTemp = new byte[4];
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[0]), 0, extTemp, 0, 2); //min
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[1]), 0, extTemp, 2, 2); //max
+                System.arraycopy(numToBytes(GetTemps(matDb, descName)[0]), 0, extTemp, 0, 2); //min
+                System.arraycopy(numToBytes(GetTemps(matDb, descName)[1]), 0, extTemp, 2, 2); //max
                 nfcAWritePage(nfcA, 24, extTemp);
                 byte[] bedTemp = new byte[4];
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[2]), 0, bedTemp, 0, 2); //min
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[3]), 0, bedTemp, 2, 2); //max
+                System.arraycopy(numToBytes(GetTemps(matDb, descName)[2]), 0, bedTemp, 0, 2); //min
+                System.arraycopy(numToBytes(GetTemps(matDb, descName)[3]), 0, bedTemp, 2, 2); //max
                 nfcAWritePage(nfcA, 29, bedTemp);
                 byte[] filData = new byte[4];
                 System.arraycopy(numToBytes(175), 0, filData, 0, 2); //diameter
@@ -722,18 +725,18 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             });
 
             if (edit) {
-                setTypeByItem(dl.type, tadapter, MaterialName);
+                setTypeByItem(dl.type, tadapter, descName);
                 try {
-                    if (!arrayContains(filamentVendors, MaterialName.split(dl.type.getSelectedItem().toString() + " ")[0].trim())) {
+                    if (!arrayContains(filamentVendors, descName.split(dl.type.getSelectedItem().toString() + " ")[0].trim())) {
                         dl.chkvendor.setChecked(true);
                         dl.txtvendor.setVisibility(View.VISIBLE);
                         dl.vendor.setVisibility(View.INVISIBLE);
-                        dl.txtvendor.setText(MaterialName.split(dl.type.getSelectedItem().toString() + " ")[0].trim());
+                        dl.txtvendor.setText(descName.split(dl.type.getSelectedItem().toString() + " ")[0].trim());
                     } else {
                         dl.chkvendor.setChecked(false);
                         dl.txtvendor.setVisibility(View.INVISIBLE);
                         dl.vendor.setVisibility(View.VISIBLE);
-                        setVendorByItem(dl.vendor, vadapter, MaterialName);
+                        setVendorByItem(dl.vendor, vadapter, descName);
                     }
                 } catch (Exception ignored) {
                     dl.chkvendor.setChecked(false);
@@ -742,11 +745,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     dl.vendor.setSelection(0);
                 }
                 try {
-                    dl.txtserial.setText(MaterialName.split(dl.type.getSelectedItem().toString() + " ")[1]);
+                    dl.txtserial.setText(descName.split(dl.type.getSelectedItem().toString() + " ")[1]);
                 } catch (ArrayIndexOutOfBoundsException ignored) {
                     dl.txtserial.setText("");
                 }
-                int[] temps = GetTemps(matDb, MaterialName);
+                int[] temps = GetTemps(matDb, descName);
                 dl.txtextmin.setText(String.valueOf(temps[0]));
                 dl.txtextmax.setText(String.valueOf(temps[1]));
                 dl.txtbedmin.setText(String.valueOf(temps[2]));
@@ -770,23 +773,22 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         Filament filament = new Filament();
         filament.position =  matDb.getItemCount();
         filament.filamentID = "";
-        filament.filamentName = String.format("%s %s %s", tmpVendor.trim(), tmpType, tmpSerial.trim());
-        filament.filamentVendor = "";
+        filament.filamentName = String.format("%s %s", tmpType, tmpSerial.trim());
+        filament.filamentVendor = tmpVendor.trim();
         filament.filamentParam = String.format("%s|%s|%s|%s", tmpExtMin, tmpExtMax, tmpBedMin, tmpBedMax);
         matDb.addItem(filament);
         loadMaterials(false);
     }
 
     void updateFilament(String tmpVendor, String tmpType, String tmpSerial, String tmpExtMin, String tmpExtMax, String tmpBedMin, String tmpBedMax) {
-        Filament currentFilament = matDb.getFilamentByName(MaterialName);
+        Filament currentFilament = matDb.getFilamentByDesc(descName);
         int tmpPosition = currentFilament.position;
         matDb.deleteItem(currentFilament);
-        MaterialName = String.format("%s %s %s", tmpVendor.trim(), tmpType, tmpSerial.trim());
         Filament filament = new Filament();
         filament.position =  tmpPosition;
         filament.filamentID = "";
-        filament.filamentName = MaterialName;
-        filament.filamentVendor = "";
+        filament.filamentName = String.format("%s %s", tmpType, tmpSerial.trim());
+        filament.filamentVendor = tmpVendor.trim();
         filament.filamentParam = String.format("%s|%s|%s|%s", tmpExtMin, tmpExtMax, tmpBedMin, tmpBedMax);
         matDb.addItem(filament);
         loadMaterials(true);
