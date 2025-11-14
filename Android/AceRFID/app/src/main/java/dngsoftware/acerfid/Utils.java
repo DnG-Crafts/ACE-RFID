@@ -14,7 +14,17 @@ import android.media.ToneGenerator;
 import android.net.Uri;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
+
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -103,7 +113,7 @@ public class Utils {
             filament.filamentID = "AHPLPBK-102";
             filament.filamentName = "PLA+";
             filament.filamentVendor = "AC";
-            filament.filamentParam = "210|230|45|60";
+            filament.filamentParam = "205|215|50|60";
             db.addItem(filament);
 
             filament = new Filament();
@@ -224,10 +234,18 @@ public class Utils {
     }
 
     public static void SetPermissions(Context context) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.NFC) != PackageManager.PERMISSION_GRANTED) {
-            String[] perms = {Manifest.permission.NFC};
-            int permsRequestCode = 200;
-            requestPermissions((Activity) context, perms, permsRequestCode);
+        String[] REQUIRED_PERMISSIONS = {Manifest.permission.NFC, Manifest.permission.INTERNET,
+                Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
+        Activity activity = (Activity) context;
+        List<String> permissionsToRequest = new ArrayList<>();
+        for (String permission : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(permission);
+            }
+        }
+        if (!permissionsToRequest.isEmpty()) {
+            String[] permsArray = permissionsToRequest.toArray(new String[0]);
+            ActivityCompat.requestPermissions(activity, permsArray, 200);
         }
     }
 
@@ -346,6 +364,45 @@ public class Utils {
             Intent intent = new Intent(Intent.ACTION_VIEW, webpage);
             context.startActivity(intent);
         } catch (Exception ignored) {}
+    }
+
+    public static void copyFileToUri(Context context, File sourceFile, Uri destinationUri) throws IOException {
+        try (InputStream in = new FileInputStream(sourceFile);
+             OutputStream out = context.getContentResolver().openOutputStream(destinationUri)) {
+            if (out == null) {
+                throw new IOException("Failed to open output stream for URI: " + destinationUri);
+            }
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = in.read(buffer)) > 0) {
+                out.write(buffer, 0, length);
+            }
+        }
+    }
+
+    public static void copyFile(File sourceFile, File destinationFile) throws IOException {
+        try (InputStream in = new FileInputStream(sourceFile);
+             OutputStream out = new FileOutputStream(destinationFile)) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = in.read(buffer)) > 0) {
+                out.write(buffer, 0, length);
+            }
+        }
+    }
+
+    public static void copyUriToFile(Context context, Uri sourceUri, File destinationFile) throws IOException {
+        try (InputStream in = context.getContentResolver().openInputStream(sourceUri);
+             OutputStream out = new FileOutputStream(destinationFile)) {
+            if (in == null) {
+                throw new IOException("Failed to open input stream for URI: " + sourceUri);
+            }
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = in.read(buffer)) > 0) {
+                out.write(buffer, 0, length);
+            }
+        }
     }
 
     public static String GetSetting(Context context, String sKey, String sDefault) {
@@ -523,6 +580,7 @@ public class Utils {
             "PC",
             "PETG",
             "PLA",
+            "PLA+",
             "PLA-CF",
             "PVA",
             "PP",
@@ -547,6 +605,8 @@ public class Utils {
                 return new int[]{230, 250, 70, 90};
             case "PLA":
                 return new int[]{190, 230, 50, 60};
+            case "PLA+":
+                return new int[]{205, 215, 50, 60};
             case "PLA-CF":
                 return new int[]{210, 240, 45, 65};
             case "PVA":

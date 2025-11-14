@@ -263,7 +263,7 @@
         android:layout_height="38dp"
         android:layout_marginBottom="14dp"
         android:layout_marginEnd="-6dp"
-        android:contentDescription="@string/add"
+        android:importantForAccessibility="no"
         app:layout_constraintEnd_toEndOf="@+id/material"
         app:layout_constraintBottom_toTopOf="@+id/material"
         app:srcCompat="@drawable/twotone_add_24"
@@ -275,7 +275,7 @@
         android:layout_height="30dp"
         android:layout_marginBottom="19dp"
         android:layout_marginEnd="44dp"
-        android:contentDescription="@string/edit"
+        android:importantForAccessibility="no"
         app:layout_constraintEnd_toStartOf="@+id/addbutton"
         app:layout_constraintBottom_toTopOf="@+id/material"
         app:srcCompat="@drawable/twotone_edit_24"
@@ -287,12 +287,22 @@
         android:layout_height="30dp"
         android:layout_marginBottom="18dp"
         android:layout_marginEnd="44dp"
-        android:contentDescription="@string/delete"
+        android:importantForAccessibility="no"
         app:srcCompat="@drawable/twotone_delete_24"
         app:tint="#1976D2"
         app:layout_constraintEnd_toStartOf="@+id/editbutton"
         app:layout_constraintBottom_toTopOf="@+id/material" />
 
+    <ImageView
+        android:id="@+id/dbbutton"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginTop="15dp"
+        android:importantForAccessibility="no"
+        app:srcCompat="@drawable/twotone_database_24"
+        app:tint="#1976D2"
+        app:layout_constraintStart_toStartOf="@+id/lblmaterial"
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
 </ScrollView>

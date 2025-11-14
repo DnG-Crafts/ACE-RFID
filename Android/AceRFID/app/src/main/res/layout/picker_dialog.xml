@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
@@ -216,7 +217,7 @@
             android:background="@drawable/rounded_card_background"
             android:orientation="vertical"
             android:padding="16dp"
-            app:layout_constraintBottom_toTopOf="@+id/colorDisplayArea"
+            app:layout_constraintBottom_toTopOf="@+id/photoColorArea"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/gradientPickerArea">
@@ -276,6 +277,77 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/photoColorArea"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/rounded_card_background"
+            android:orientation="vertical"
+            android:padding="16dp"
+            app:layout_constraintBottom_toTopOf="@+id/colorDisplayArea"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/presetColorsArea">
+
+            <LinearLayout
+                android:id="@+id/photoColorHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/photo_color"
+                    android:textColor="#374151"
+                    android:textSize="18sp"
+                    android:textStyle="normal" />
+
+                <ImageView
+                    android:id="@+id/photoColorToggleIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_arrow_up" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/photoColorContent"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:visibility="visible">
+
+                <ImageView
+                    android:id="@+id/photoImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/camera"
+                    android:scaleType="fitXY"
+                    tools:srcCompat="@drawable/camera"
+                    android:importantForAccessibility="no" />
+
+                <ImageView
+                    android:id="@+id/clearImage"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:visibility="gone"
+                    android:src="@drawable/twotone_cancel_24"
+                    android:layout_gravity="top|end"
+                    tools:srcCompat="@drawable/twotone_cancel_24"
+                    android:importantForAccessibility="no" />
+
+            </FrameLayout>
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/colorDisplayArea"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -287,7 +359,7 @@
             android:padding="16dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/presetColorsArea">
+            app:layout_constraintTop_toBottomOf="@+id/photoColorArea">
 
             <LinearLayout
                 android:id="@+id/colorDisplayContent"

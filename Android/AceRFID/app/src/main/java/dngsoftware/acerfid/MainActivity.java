@@ -14,6 +14,9 @@ import static dngsoftware.acerfid.Utils.SetPermissions;
 import static dngsoftware.acerfid.Utils.arrayContains;
 import static dngsoftware.acerfid.Utils.bytesToHex;
 import static dngsoftware.acerfid.Utils.combineArrays;
+import static dngsoftware.acerfid.Utils.copyFile;
+import static dngsoftware.acerfid.Utils.copyFileToUri;
+import static dngsoftware.acerfid.Utils.copyUriToFile;
 import static dngsoftware.acerfid.Utils.filamentTypes;
 import static dngsoftware.acerfid.Utils.filamentVendors;
 import static dngsoftware.acerfid.Utils.getAllMaterials;
@@ -31,9 +34,11 @@ import static dngsoftware.acerfid.Utils.presetColors;
 import static dngsoftware.acerfid.Utils.setTypeByItem;
 import static dngsoftware.acerfid.Utils.setVendorByItem;
 import static dngsoftware.acerfid.Utils.subArray;
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Dialog;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
@@ -41,24 +46,35 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.nfc.tech.NfcA;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
+import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
-import androidx.room.Room;
+import androidx.documentfile.provider.DocumentFile;
+
+import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
@@ -71,16 +87,20 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Toast;
 import com.google.android.flexbox.FlexboxLayout;
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
     private MatDB matDb;
+    private filamentDB rdb;
     private NfcAdapter nfcAdapter;
     Tag currentTag = null;
     ArrayAdapter<String> madapter, sadapter;
@@ -91,7 +111,17 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     boolean userSelect = false;
     private ActivityMainBinding main;
     Bitmap gradientBitmap;
+    private ExecutorService executorService;
+    private ActivityResultLauncher<Intent> exportDirectoryChooser;
+    private ActivityResultLauncher<Intent> importFileChooser;
+    private ActivityResultLauncher<String> requestPermissionLauncher;
+    private ActivityResultLauncher<Void> cameraLauncher;
+    private static final int ACTION_EXPORT = 1;
+    private static final int ACTION_IMPORT = 2;
+    private int pendingAction = -1;
 
+    private static final int PERMISSION_REQUEST_CODE = 2;
+    private PickerDialogBinding colorDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -107,6 +137,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         View rv = main.getRoot();
         setContentView(rv);
 
+        SetPermissions(this);
+
+        executorService = Executors.newSingleThreadExecutor();
+        setupActivityResultLaunchers();
+
+
         main.editbutton.setVisibility(View.INVISIBLE);
         main.deletebutton.setVisibility(View.INVISIBLE);
 
@@ -115,13 +151,18 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         main.readbutton.setOnClickListener(view -> readTag(currentTag));
         main.writebutton.setOnClickListener(view -> writeTag(currentTag));
 
+        main.dbbutton.setOnClickListener(view -> showImportExportDialog());
         main.addbutton.setOnClickListener(view -> openAddDialog(false));
         main.editbutton.setOnClickListener(view -> openAddDialog(true));
 
         main.deletebutton.setOnClickListener(view -> {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle(R.string.delete_filament);
-            builder.setMessage(MaterialName);
+            SpannableString titleText = new SpannableString(getString(R.string.delete_filament));
+            titleText.setSpan(new ForegroundColorSpan(Color.parseColor("#1976D2")), 0, titleText.length(), 0);
+            SpannableString messageText = new SpannableString(MaterialName);
+            messageText.setSpan(new ForegroundColorSpan(Color.BLACK), 0, messageText.length(), 0);
+            builder.setTitle(titleText);
+            builder.setMessage(messageText);
             builder.setPositiveButton(R.string.delete, (dialog, which) -> {
                 if (matDb.getFilamentByName(MaterialName) != null) {
                     matDb.deleteItem(matDb.getFilamentByName(MaterialName));
@@ -132,19 +173,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
             AlertDialog alert = builder.create();
             alert.show();
+            if (alert.getWindow() != null) {
+                alert.getWindow().setBackgroundDrawableResource(android.R.color.white);
+                alert.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#1976D2"));
+                alert.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#1976D2"));
+            }
         });
 
-        filamentDB rdb = Room.databaseBuilder(this, filamentDB.class, "filament_database")
-                .fallbackToDestructiveMigration()
-                .allowMainThreadQueries()
-                .build();
-        matDb = rdb.matDB();
-
-        if (matDb.getItemCount() == 0) {
-            populateDatabase(matDb);
-        }
-
-        SetPermissions(this);
 
         try {
             nfcAdapter = NfcAdapter.getDefaultAdapter(this);
@@ -160,22 +195,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } catch (Exception ignored) {
         }
 
-        sadapter = new ArrayAdapter<>(this, R.layout.spinner_item, materialWeights);
-        main.spoolsize.setAdapter(sadapter);
-        main.spoolsize.setSelection(SelectedSize);
-        main.spoolsize.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
-                SelectedSize = main.spoolsize.getSelectedItemPosition();
-                MaterialWeight = sadapter.getItem(position);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parentView) {
-            }
-        });
-
-        loadMaterials(false);
+        setMatDb();
 
         main.colorspin.setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
@@ -197,9 +217,46 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         ReadTagUID(getIntent());
     }
 
+    void setMatDb() {
+        try {
+        if (rdb != null && rdb.isOpen()) {
+            rdb.close();
+        }
+
+        rdb = filamentDB.getInstance(this);
+        matDb = rdb.matDB();
+
+        if (matDb.getItemCount() == 0) {
+            populateDatabase(matDb);
+        }
+
+        runOnUiThread(() -> {
+            sadapter = new ArrayAdapter<>(this, R.layout.spinner_item, materialWeights);
+            main.spoolsize.setAdapter(sadapter);
+            main.spoolsize.setSelection(SelectedSize);
+            main.spoolsize.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
+                    SelectedSize = main.spoolsize.getSelectedItemPosition();
+                    MaterialWeight = sadapter.getItem(position);
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parentView) {
+                }
+            });
+
+            loadMaterials(false);
+        });
+        } catch (Exception ignored) {}
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdownNow();
+        }
         if (nfcAdapter != null && nfcAdapter.isEnabled()) {
             try {
                 nfcAdapter.disableReaderMode(this);
@@ -518,6 +575,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             pickerDialog.setTitle(R.string.pick_color);
             PickerDialogBinding dl = PickerDialogBinding.inflate(getLayoutInflater());
             View rv = dl.getRoot();
+            colorDialog = dl;
             pickerDialog.setContentView(rv);
             gradientBitmap = null;
 
@@ -579,6 +637,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     dl.presetColorsToggleIcon,
                     GetSetting(this,"PRESET_VIEW",true)
             );
+            setupCollapsibleSection(dl,
+                    dl.photoColorHeader,
+                    dl.photoColorContent,
+                    dl.photoColorToggleIcon,
+                    GetSetting(this, "PHOTO_VIEW", false)
+            );
 
             SeekBar.OnSeekBarChangeListener rgbChangeListener = new SeekBar.OnSeekBarChangeListener() {
                 @Override
@@ -613,6 +677,27 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
             dl.txtcolor.setOnClickListener(v -> showHexInputDialog(dl));
 
+            dl.photoImage.setOnClickListener(v -> {
+                Drawable drawable = ContextCompat.getDrawable(dl.photoImage.getContext(), R.drawable.camera);
+                if (dl.photoImage.getDrawable() != null && drawable != null) {
+                    if (Objects.equals(dl.photoImage.getDrawable().getConstantState(), drawable.getConstantState())) {
+                        checkPermissionsAndCapture();
+                    }
+                } else {
+                    checkPermissionsAndCapture();
+                }
+            });
+
+            dl.clearImage.setOnClickListener(v -> {
+
+                dl.photoImage.setImageResource( R.drawable.camera);
+                dl.photoImage.setDrawingCacheEnabled(false);
+                dl.photoImage.buildDrawingCache(false);
+                dl.photoImage.setOnTouchListener(null);
+                dl.clearImage.setVisibility(View.GONE);
+
+            });
+
             pickerDialog.show();
         } catch (Exception ignored) {}
     }
@@ -622,8 +707,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
             if (!Utils.GetSetting(this,"CFN",false)) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.setTitle(R.string.notice);
-                builder.setMessage(R.string.cf_notice);
+                SpannableString titleText = new SpannableString(getString(R.string.notice));
+                titleText.setSpan(new ForegroundColorSpan(Color.parseColor("#1976D2")), 0, titleText.length(), 0);
+                SpannableString messageText = new SpannableString(getString(R.string.cf_notice));
+                messageText.setSpan(new ForegroundColorSpan(Color.BLACK), 0, messageText.length(), 0);
+                builder.setTitle(titleText);
+                builder.setMessage(messageText);
                 builder.setPositiveButton(R.string.accept, (dialog, which) -> {
                     Utils.SaveSetting(this, "CFN", true);
                     dialog.dismiss();
@@ -632,6 +721,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
                 AlertDialog alert = builder.create();
                 alert.show();
+                if (alert.getWindow() != null) {
+                    alert.getWindow().setBackgroundDrawableResource(android.R.color.white);
+                    alert.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#1976D2"));
+                    alert.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#1976D2"));
+                }
                 return;
             }
 
@@ -781,7 +875,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         Filament currentFilament = matDb.getFilamentByName(MaterialName);
         int tmpPosition = currentFilament.position;
         matDb.deleteItem(currentFilament);
-        MaterialName = String.format("%s %s %s", tmpVendor.trim(), tmpType, tmpSerial.trim());
+        MaterialName = String.format("%s %s %s", tmpVendor.trim() , tmpType, tmpSerial.trim());
         Filament filament = new Filament();
         filament.position =  tmpPosition;
         filament.filamentID = "";
@@ -946,7 +1040,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         });
     }
 
-    private void setupCollapsibleSection(PickerDialogBinding dl, LinearLayout header, final LinearLayout content, final ImageView toggleIcon, boolean isExpandedInitially) {
+    private void setupCollapsibleSection(PickerDialogBinding dl, LinearLayout header, final ViewGroup content, final ImageView toggleIcon, boolean isExpandedInitially) {
         content.setVisibility(isExpandedInitially ? View.VISIBLE : View.GONE);
         toggleIcon.setImageResource(isExpandedInitially ? R.drawable.ic_arrow_up : R.drawable.ic_arrow_down);
         header.setOnClickListener(v -> {
@@ -961,6 +1055,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 else if (header.getId() == dl.presetColorsHeader.getId()) {
                     SaveSetting(this,"PRESET_VIEW",false);
+                }
+                else if (header.getId() == dl.photoColorHeader.getId()) {
+                    SaveSetting(this,"PHOTO_VIEW",false);
                 }
             } else {
                 content.setVisibility(View.VISIBLE);
@@ -977,24 +1074,313 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 else if (header.getId() == dl.presetColorsHeader.getId()) {
                     SaveSetting(this,"PRESET_VIEW",true);
                 }
+                else if (header.getId() == dl.photoColorHeader.getId()) {
+                    SaveSetting(this,"PHOTO_VIEW",true);
+                }
             }
         });
     }
 
+    private void setupActivityResultLaunchers() {
+        exportDirectoryChooser = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        Uri treeUri = result.getData().getData();
+                        if (treeUri != null) {
+                            getContentResolver().takePersistableUriPermission(
+                                    treeUri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            );
+                            performSAFExport(treeUri);
+                        } else {
+                            Toast.makeText(this, R.string.failed_to_get_export_directory, Toast.LENGTH_SHORT).show();
+                        }
+                    } else {
+                        Toast.makeText(this, R.string.export_cancelled, Toast.LENGTH_SHORT).show();
+                    }
+                }
+        );
+
+        importFileChooser = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        Uri fileUri = result.getData().getData();
+                        if (fileUri != null) {
+                            performSAFImport(fileUri);
+                        } else {
+                            Toast.makeText(this, R.string.failed_to_select_import_file, Toast.LENGTH_SHORT).show();
+                        }
+                    } else {
+                        Toast.makeText(this, R.string.import_cancelled, Toast.LENGTH_SHORT).show();
+                    }
+                }
+        );
+
+        requestPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                isGranted -> {
+                    if (isGranted) {
+                        if (pendingAction == ACTION_EXPORT) {
+                            performLegacyExport();
+                        } else if (pendingAction == ACTION_IMPORT) {
+                            performLegacyImport();
+                        }
+                    } else {
+                        Toast.makeText(this, R.string.storage_permission_denied_cannot_perform_action, Toast.LENGTH_LONG).show();
+                    }
+                    pendingAction = -1;
+                }
+        );
+
+        cameraLauncher = registerForActivityResult(
+                new ActivityResultContracts.TakePicturePreview(),
+                bitmap -> {
+                    if (bitmap != null) {
+                        colorDialog.photoImage.setImageBitmap(bitmap);
+                        setupPhotoPicker(colorDialog.photoImage);
+                    } else {
+                        // Handle failure or cancellation
+                        Toast.makeText(this, R.string.photo_capture_cancelled_or_failed, Toast.LENGTH_SHORT).show();
+                    }
+                }
+        );
+    }
+
+    private void checkPermissionAndStartAction(int actionType) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+                if (actionType == ACTION_EXPORT) {
+                    performLegacyExport();
+                } else {
+                    performLegacyImport();
+                }
+            } else {
+                pendingAction = actionType;
+                requestPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+        } else {
+            if (actionType == ACTION_EXPORT) {
+                startSAFExportProcess();
+            } else {
+                startSAFImportProcess();
+            }
+        }
+    }
+
+    private void startSAFExportProcess() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.putExtra(Intent.EXTRA_TITLE, getString(R.string.select_backup_folder));
+        exportDirectoryChooser.launch(intent);
+    }
+
+    private void performSAFExport(Uri treeUri) {
+        executorService.execute(() -> {
+            try {
+                File dbFile = filamentDB.getDatabaseFile(this);
+                filamentDB.closeInstance();
+                DocumentFile pickedDir = DocumentFile.fromTreeUri(this, treeUri);
+                if (pickedDir == null || !pickedDir.exists() || !pickedDir.canWrite()) {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.cannot_write_to_selected_directory, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                String dbBaseName = dbFile.getName().replace(".db", "");
+                DocumentFile dbDestFile = pickedDir.createFile("application/octet-stream", dbBaseName + ".db");
+                if (dbDestFile != null) {
+                    copyFileToUri(this, dbFile, dbDestFile.getUri());
+                } else {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.failed_to_create_db_backup_file, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                runOnUiThread(() -> Toast.makeText(this, R.string.database_exported_successfully, Toast.LENGTH_LONG).show());
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_saf_export_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+            } finally {
+                filamentDB.getInstance(this);
+            }
+        });
+    }
+
+    private void performLegacyExport() {
+        executorService.execute(() -> {
+            try {
+                File dbFile = filamentDB.getDatabaseFile(this);
+                filamentDB.closeInstance();
+                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
+                if (!downloadsDir.exists()) {
+                    boolean val = downloadsDir.mkdirs();
+                }
+                String dbBaseName = dbFile.getName().replace(".db", "");
+                File dbDestFile = new File(downloadsDir, dbBaseName + ".db");
+                copyFile(dbFile, dbDestFile);
+                runOnUiThread(() -> Toast.makeText(this, R.string.database_exported_successfully_to_downloads_folder, Toast.LENGTH_LONG).show());
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_legacy_export_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+            } finally {
+                filamentDB.getInstance(this);
+            }
+        });
+    }
+
+    private void startSAFImportProcess() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/octet-stream");
+        String[] mimeTypes = {"application/x-sqlite3", "application/vnd.sqlite3", "application/octet-stream"};
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+        importFileChooser.launch(intent);
+    }
+
+    private void performSAFImport(Uri sourceUri) {
+        if (!sourceUri.toString().toLowerCase().contains("filament_database")) {
+            runOnUiThread(() -> Toast.makeText(this, R.string.incorrect_database_file_selected, Toast.LENGTH_LONG).show());
+            return;
+        }
+        executorService.execute(() -> {
+            try {
+                filamentDB.closeInstance();
+                File dbFile = filamentDB.getDatabaseFile(this);
+                File dbDir = dbFile.getParentFile();
+                if (dbDir != null && !dbDir.exists()) {
+                    boolean val = dbDir.mkdirs();
+                }
+                copyUriToFile(this, sourceUri, dbFile);
+                filamentDB.getInstance(this);
+                setMatDb();
+
+                runOnUiThread(() -> Toast.makeText(this, R.string.database_imported_successfully, Toast.LENGTH_LONG).show());
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_saf_import_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+            } finally {
+                if (filamentDB.INSTANCE == null) {
+                    filamentDB.getInstance(this);
+                    setMatDb();
+                }
+            }
+        });
+    }
+
+    private void performLegacyImport() {
+        executorService.execute(() -> {
+            try {
+                filamentDB.closeInstance();
+
+                File dbFile = filamentDB.getDatabaseFile(this);
+                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                File sourceDbFile = new File(downloadsDir, dbFile.getName());
+                if (!dbFile.getName().toLowerCase().contains("filament_database")) {
+                    runOnUiThread(() -> Toast.makeText(this, R.string.incorrect_database_file_selected, Toast.LENGTH_LONG).show());
+                    return;
+                }
+                if (!sourceDbFile.exists()) {
+                    runOnUiThread(() -> Toast.makeText(this, getString(R.string.backup_file_not_found_in_downloads) + sourceDbFile.getName(), Toast.LENGTH_LONG).show());
+                    return;
+                }
+                File dbDir = dbFile.getParentFile();
+                if (dbDir != null && !dbDir.exists()) {
+                    boolean val = dbDir.mkdirs();
+                }
+                copyFile(sourceDbFile, dbFile);
+                filamentDB.getInstance(this);
+                setMatDb();
+
+                runOnUiThread(() -> Toast.makeText(this, R.string.database_imported_successfully, Toast.LENGTH_LONG).show());
+
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_legacy_import_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+            } finally {
+                if (filamentDB.INSTANCE == null) {
+                    filamentDB.getInstance(this);
+                    setMatDb();
+
+                }
+            }
+        });
+    }
+
+    private void showImportExportDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        SpannableString titleText = new SpannableString(getString(R.string.database_operations));
+        titleText.setSpan(new ForegroundColorSpan(Color.parseColor("#1976D2")), 0, titleText.length(), 0);
+        SpannableString messageText = new SpannableString(getString(R.string.db_choose_an_action));
+        messageText.setSpan(new ForegroundColorSpan(Color.BLACK), 0, messageText.length(), 0);
+        builder.setTitle(titleText);
+        builder.setMessage(messageText);
+        builder.setPositiveButton(R.string.export, (dialog, which) -> new Thread(() -> {
+            if (matDb.getItemCount() > 0) {
+                runOnUiThread(() -> checkPermissionAndStartAction(ACTION_EXPORT));
+            } else {
+                runOnUiThread(() -> Toast.makeText(getBaseContext(), R.string.no_data_to_export, Toast.LENGTH_SHORT).show());
+            }
+        }).start());
+        builder.setNegativeButton(R.string.import_txt, (dialog, which) -> checkPermissionAndStartAction(ACTION_IMPORT));
+        builder.setNeutralButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.white);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#1976D2"));
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#1976D2"));
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.parseColor("#1976D2"));
+        }
+    }
 
 
+    private void checkPermissionsAndCapture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, PERMISSION_REQUEST_CODE);
+        }
+        else {
+            takePicture();
+        }
+    }
 
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                takePicture();
+            } else {
+                Toast.makeText(this, R.string.camera_permission_is_required_to_take_photos, Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void takePicture() {
+        if (cameraLauncher != null) {
+            cameraLauncher.launch(null);
+        }
+    }
 
 
-
-
-
-
-
-
-
-
-
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupPhotoPicker(ImageView imageView) {
+        colorDialog.clearImage.setVisibility(View.VISIBLE);
+        imageView.setDrawingCacheEnabled(true);
+        imageView.buildDrawingCache(true);
+        imageView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+                Bitmap bitmap = imageView.getDrawingCache();
+                float touchX = event.getX();
+                float touchY = event.getY();
+                if (touchX >= 0 && touchX < bitmap.getWidth() && touchY >= 0 && touchY < bitmap.getHeight()) {
+                    try {
+                        int pixel = bitmap.getPixel((int) touchX, (int) touchY);
+                        int r = Color.red(pixel);
+                        int g = Color.green(pixel);
+                        int b = Color.blue(pixel);
+                        colorDialog.colorDisplay.setBackgroundColor(Color.rgb(r, g, b));
+                        colorDialog.txtcolor.setText(String.format("FF%06X", (0xFFFFFF & pixel)));
+                        setSlidersFromColor(colorDialog, Color.argb(255, Color.red(pixel), Color.green(pixel), Color.blue(pixel)));
+                    } catch (Exception ignored) {}
+                }
+            }
+            return true;
+        });
+    }
 
 }
