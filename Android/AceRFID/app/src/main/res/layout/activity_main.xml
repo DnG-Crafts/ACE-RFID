@@ -154,7 +154,7 @@
         android:textColor="@color/text_color"
         android:textSize="18sp"
         app:layout_constraintStart_toEndOf="@+id/lbltagtype"
-        app:layout_constraintTop_toBottomOf="@+id/autoread" />
+        app:layout_constraintTop_toBottomOf="@+id/autolaunch" />
 
     <TextView
         android:id="@+id/lbltagtype"
@@ -169,7 +169,7 @@
         android:textStyle="bold"
         app:layout_constraintEnd_toStartOf="@+id/tagtype"
         app:layout_constraintStart_toStartOf="@+id/autoread"
-        app:layout_constraintTop_toBottomOf="@+id/autoread" />
+        app:layout_constraintTop_toBottomOf="@+id/autolaunch" />
 
     <TextView
         android:id="@+id/tagid"
@@ -242,6 +242,21 @@
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="@id/lblcolor"
         app:layout_constraintTop_toBottomOf="@+id/infotext" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/autolaunch"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:singleLine="true"
+        android:text="@string/launch_app_on_tag_detect"
+        android:textColor="@color/text_color"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/colorspin"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@id/lblcolor"
+        app:layout_constraintTop_toBottomOf="@+id/autoread" />
 
     <TextView
         android:id="@+id/infotext"

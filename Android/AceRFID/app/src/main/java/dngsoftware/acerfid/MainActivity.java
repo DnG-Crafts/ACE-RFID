@@ -31,6 +31,7 @@ import static dngsoftware.acerfid.Utils.parseNumber;
 import static dngsoftware.acerfid.Utils.playBeep;
 import static dngsoftware.acerfid.Utils.populateDatabase;
 import static dngsoftware.acerfid.Utils.presetColors;
+import static dngsoftware.acerfid.Utils.setNfcLaunchMode;
 import static dngsoftware.acerfid.Utils.setTypeByItem;
 import static dngsoftware.acerfid.Utils.setVendorByItem;
 import static dngsoftware.acerfid.Utils.subArray;
@@ -73,7 +74,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.documentfile.provider.DocumentFile;
-
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -213,6 +213,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
         main.autoread.setChecked(GetSetting(this, "autoread", false));
         main.autoread.setOnCheckedChangeListener((buttonView, isChecked) -> SaveSetting(this, "autoread", isChecked));
+
+        main.autolaunch.setChecked(GetSetting(this, "autolaunch", true));
+        main.autolaunch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            SaveSetting(this, "autolaunch", isChecked);
+            setNfcLaunchMode(this, isChecked);
+        });
 
         ReadTagUID(getIntent());
     }

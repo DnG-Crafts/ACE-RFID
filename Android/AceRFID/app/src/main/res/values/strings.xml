@@ -87,4 +87,5 @@
     <string name="photo_color">Photo Color</string>
     <string name="photo_capture_cancelled_or_failed">Photo capture cancelled or failed.</string>
     <string name="camera_permission_is_required_to_take_photos">Camera permission is required to take photos.</string>
+    <string name="launch_app_on_tag_detect">Launch APP on tag detect?</string>
 </resources>

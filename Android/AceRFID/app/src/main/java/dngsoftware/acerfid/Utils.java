@@ -4,6 +4,7 @@ import static androidx.core.app.ActivityCompat.requestPermissions;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -468,6 +469,17 @@ public class Utils {
                 spinner.setSelection(i);
                 return;
             }
+        }
+    }
+
+    public static void setNfcLaunchMode(Context context, boolean allowLaunch ) {
+        ComponentName componentName = new ComponentName(context, LaunchActivity.class);
+        PackageManager packageManager = context.getPackageManager();
+        if (allowLaunch) {
+            packageManager.setComponentEnabledSetting(componentName, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        }
+        else {
+            packageManager.setComponentEnabledSetting(componentName, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
         }
     }
 
