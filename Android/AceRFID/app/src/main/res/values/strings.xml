@@ -62,8 +62,6 @@
     <string name="formatting_tag">Formatting tag…</string>
     <string name="tag_formatted">Tag formatted</string>
     <string name="failed_to_format_tag_for_writing">Failed to format tag for writing</string>
-    <string name="database_operations">Database Operations</string>
-    <string name="db_choose_an_action">filament_database.db\n\nChoose an action:</string>
     <string name="import_txt">Import</string>
     <string name="export">Export</string>
     <string name="no_data_to_export">No data to export</string>
@@ -88,4 +86,13 @@
     <string name="photo_capture_cancelled_or_failed">Photo capture cancelled or failed.</string>
     <string name="camera_permission_is_required_to_take_photos">Camera permission is required to take photos.</string>
     <string name="launch_app_on_tag_detect">Launch APP on tag detect?</string>
+    <string name="values_reset">Values reset</string>
+    <string name="invalid_input">Invalid input</string>
+    <string name="field_cannot_be_empty_use_0">Field cannot be empty\nUse 0 for no bed temperature</string>
+    <string name="this_temperature_is_too_low">This temperature is too low\nValues below 150 may cause issues</string>
+    <string name="field_cannot_be_empty">Field cannot be empty</string>
+    <string name="this_value_might_be_invalid">This value might be invalid\n1.75 is a valid diameter</string>
+    <string name="the_length_is_too_short">The length is too short\nThe value is length in meters</string>
+    <string name="minimum_8_characters_required">Minimum 8 characters required\nThe Format is: AARRGGBB</string>
+    <string name="custom_tag_data">Custom Tag Data</string>
 </resources>

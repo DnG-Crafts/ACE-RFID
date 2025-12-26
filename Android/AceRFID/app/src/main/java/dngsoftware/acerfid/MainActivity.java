@@ -3,6 +3,7 @@ package dngsoftware.acerfid;
 import static android.view.View.TEXT_ALIGNMENT_CENTER;
 import dngsoftware.acerfid.databinding.ActivityMainBinding;
 import dngsoftware.acerfid.databinding.AddDialogBinding;
+import dngsoftware.acerfid.databinding.ManualDialogBinding;
 import dngsoftware.acerfid.databinding.PickerDialogBinding;
 import static dngsoftware.acerfid.Utils.GetBrand;
 import static dngsoftware.acerfid.Utils.GetDefaultTemps;
@@ -57,13 +58,16 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.TextWatcher;
 import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import androidx.activity.result.ActivityResultLauncher;
@@ -71,9 +75,12 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
+import androidx.core.view.GravityCompat;
 import androidx.documentfile.provider.DocumentFile;
+import androidx.drawerlayout.widget.DrawerLayout;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -87,6 +94,7 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Toast;
 import com.google.android.flexbox.FlexboxLayout;
+import com.google.android.material.navigation.NavigationView;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -98,18 +106,19 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
+public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback, NavigationView.OnNavigationItemSelectedListener {
     private MatDB matDb;
     private filamentDB rdb;
     private NfcAdapter nfcAdapter;
     Tag currentTag = null;
     ArrayAdapter<String> madapter, sadapter;
     String MaterialName, MaterialWeight = "1 KG", MaterialColor = "FF0000FF";
-    Dialog pickerDialog, addDialog;
+    Dialog pickerDialog, addDialog, customDialog;
     AlertDialog inputDialog;
     int SelectedSize;
     boolean userSelect = false;
     private ActivityMainBinding main;
+    private ManualDialogBinding manual;
     Bitmap gradientBitmap;
     private ExecutorService executorService;
     private ActivityResultLauncher<Intent> exportDirectoryChooser;
@@ -119,6 +128,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private static final int ACTION_EXPORT = 1;
     private static final int ACTION_IMPORT = 2;
     private int pendingAction = -1;
+    NavigationView navigationView;
+    private DrawerLayout drawerLayout;
+
 
     private static final int PERMISSION_REQUEST_CODE = 2;
     private PickerDialogBinding colorDialog;
@@ -142,6 +154,26 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         executorService = Executors.newSingleThreadExecutor();
         setupActivityResultLaunchers();
 
+        drawerLayout = findViewById(R.id.drawer_layout);
+        navigationView = findViewById(R.id.nav_view);
+        navigationView.setNavigationItemSelectedListener(this);
+
+        MenuItem launchItem = navigationView.getMenu().findItem(R.id.nav_launch);
+        SwitchCompat launchSwitch = Objects.requireNonNull(launchItem.getActionView()).findViewById(R.id.drawer_switch);
+        launchSwitch.setChecked(GetSetting(this, "autoLaunch", true));
+        launchSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            setNfcLaunchMode(this, isChecked);
+            SaveSetting(this, "autoLaunch", isChecked);
+        });
+
+        MenuItem readItem = navigationView.getMenu().findItem(R.id.nav_read);
+        SwitchCompat readSwitch = Objects.requireNonNull(readItem.getActionView()).findViewById(R.id.drawer_switch);
+        readSwitch.setChecked(GetSetting(this, "autoread", false));
+        readSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            SaveSetting(this, "autoread", isChecked);
+        });
+
+
 
         main.editbutton.setVisibility(View.INVISIBLE);
         main.deletebutton.setVisibility(View.INVISIBLE);
@@ -151,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         main.readbutton.setOnClickListener(view -> readTag(currentTag));
         main.writebutton.setOnClickListener(view -> writeTag(currentTag));
 
-        main.dbbutton.setOnClickListener(view -> showImportExportDialog());
+        main.menubutton.setOnClickListener(view -> drawerLayout.openDrawer(GravityCompat.START));
         main.addbutton.setOnClickListener(view -> openAddDialog(false));
         main.editbutton.setOnClickListener(view -> openAddDialog(true));
 
@@ -209,15 +241,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     break;
             }
             return false;
-        });
-
-        main.autoread.setChecked(GetSetting(this, "autoread", false));
-        main.autoread.setOnCheckedChangeListener((buttonView, isChecked) -> SaveSetting(this, "autoread", isChecked));
-
-        main.autolaunch.setChecked(GetSetting(this, "autolaunch", true));
-        main.autolaunch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            SaveSetting(this, "autolaunch", isChecked);
-            setNfcLaunchMode(this, isChecked);
         });
 
         ReadTagUID(getIntent());
@@ -458,15 +481,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         if (nfcA != null) {
             try {
                 nfcA.connect();
-                try {
-                    nfcAWritePage(nfcA, 4, new byte[]{123, 0, 101, 0});
-                } catch (Exception ignored) {
-                    nfcA.close();
-                    formatTag(tag);
-                }
-                if (!nfcA.isConnected()) {
-                    nfcA.connect();
-                }
+                nfcAWritePage(nfcA, 4, new byte[]{123, 0, 101, 0});
                 for (int i = 0; i < 5; i++) { //sku
                     nfcAWritePage(nfcA, 5 + i, subArray(GetSku(matDb, MaterialName), i * 4, 4));
                 }
@@ -486,7 +501,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     color = "010101";
                 }// basic fix for anycubic setting black to transparent
                 nfcAWritePage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color))); //color
-                //ultralight.writePage(23, new byte[] {50, 0, 100, 0});   //more temps?
                 byte[] extTemp = new byte[4];
                 System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[0]), 0, extTemp, 0, 2); //min
                 System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[1]), 0, extTemp, 2, 2); //max
@@ -562,6 +576,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             nfcA.connect();
             nfcAWritePage(nfcA, 2, new byte[] {0x00, 0x00, 0x00, 0x00});
             nfcAWritePage(nfcA, 3, ccBytes);
+            for (int i = 4; i < 32; i++) {
+                nfcAWritePage(nfcA, i, new byte[] {0x00, 0x00, 0x00, 0x00});
+            }
             Toast.makeText(getApplicationContext(), R.string.tag_formatted, Toast.LENGTH_SHORT).show();
         } catch (Exception ignored) {
             Toast.makeText(getApplicationContext(), R.string.failed_to_format_tag_for_writing, Toast.LENGTH_SHORT).show();
@@ -586,12 +603,16 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             gradientBitmap = null;
 
             dl.btncls.setOnClickListener(v -> {
-                if (dl.txtcolor.getText().toString().length() == 8) {
-                    try {
-                        MaterialColor = dl.txtcolor.getText().toString();
-                        int color = Color.argb(dl.alphaSlider.getProgress(), dl.redSlider.getProgress(), dl.greenSlider.getProgress(), dl.blueSlider.getProgress());
-                        main.colorview.setBackgroundColor(color);
-                    } catch (Exception ignored) {
+                MaterialColor = dl.txtcolor.getText().toString();
+                if (customDialog != null && customDialog.isShowing()) {
+                    manual.txtcolor.setText(MaterialColor);
+                }else {
+                    if (dl.txtcolor.getText().toString().length() == 8) {
+                        try {
+                            int color = Color.argb(dl.alphaSlider.getProgress(), dl.redSlider.getProgress(), dl.greenSlider.getProgress(), dl.blueSlider.getProgress());
+                            main.colorview.setBackgroundColor(color);
+                        } catch (Exception ignored) {
+                        }
                     }
                 }
                 pickerDialog.dismiss();
@@ -1305,11 +1326,30 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         });
     }
 
-    private void showImportExportDialog() {
+    private void showImportDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        SpannableString titleText = new SpannableString(getString(R.string.database_operations));
+        SpannableString titleText = new SpannableString("Import Database");
         titleText.setSpan(new ForegroundColorSpan(Color.parseColor("#1976D2")), 0, titleText.length(), 0);
-        SpannableString messageText = new SpannableString(getString(R.string.db_choose_an_action));
+        SpannableString messageText = new SpannableString("Restore database from file\n\nfilament_database.db");
+        messageText.setSpan(new ForegroundColorSpan(Color.BLACK), 0, messageText.length(), 0);
+        builder.setTitle(titleText);
+        builder.setMessage(messageText);
+        builder.setPositiveButton(R.string.import_txt, (dialog, which) -> checkPermissionAndStartAction(ACTION_IMPORT));
+        builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
+        AlertDialog dialog = builder.create();
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.white);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#1976D2"));
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#1976D2"));
+        }
+    }
+
+    private void showExportDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        SpannableString titleText = new SpannableString("Export Database");
+        titleText.setSpan(new ForegroundColorSpan(Color.parseColor("#1976D2")), 0, titleText.length(), 0);
+        SpannableString messageText = new SpannableString("Backup database to file\n\nfilament_database.db");
         messageText.setSpan(new ForegroundColorSpan(Color.BLACK), 0, messageText.length(), 0);
         builder.setTitle(titleText);
         builder.setMessage(messageText);
@@ -1320,19 +1360,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 runOnUiThread(() -> Toast.makeText(getBaseContext(), R.string.no_data_to_export, Toast.LENGTH_SHORT).show());
             }
         }).start());
-        builder.setNegativeButton(R.string.import_txt, (dialog, which) -> checkPermissionAndStartAction(ACTION_IMPORT));
-        builder.setNeutralButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
+        builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
         AlertDialog dialog = builder.create();
         dialog.show();
-
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.white);
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#1976D2"));
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#1976D2"));
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.parseColor("#1976D2"));
         }
     }
-
 
     private void checkPermissionsAndCapture() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -1387,6 +1423,354 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             }
             return true;
         });
+    }
+
+    @Override
+    public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.nav_export) {
+            showExportDialog();
+        }else if (id == R.id.nav_import) {
+            showImportDialog();
+        }else if (id == R.id.nav_manual) {
+            openCustom();
+        }else if (id == R.id.nav_format) {
+            formatTag(currentTag);
+        }
+        drawerLayout.closeDrawer(GravityCompat.START);
+        return true;
+    }
+
+    @SuppressLint("SetTextI18n")
+    void openCustom() {
+        try {
+            customDialog = new Dialog(this, R.style.Theme_AceRFID);
+            customDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+            customDialog.setCanceledOnTouchOutside(false);
+            customDialog.setTitle(R.string.custom_tag_data);
+            manual = ManualDialogBinding.inflate(getLayoutInflater());
+            View rv = manual.getRoot();
+            customDialog.setContentView(rv);
+
+            manual.txtbedmin.setText("50");
+            manual.txtbedmax.setText("60");
+            manual.txtextmax.setText("220");
+            manual.txtextmin.setText("190");
+            manual.txtlength.setText("330");
+            manual.txtdiam.setText("1.75");
+            manual.txtbrand.setText("");
+            manual.txttype.setText("PLA");
+            manual.txtsku.setText("");
+            manual.txtcolor.setText("FF0000FF");
+
+            manual.txttype.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txttype;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtcolor.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtcolor;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty));
+                        editText.setTextColor(Color.RED);
+                    } else if (input.length() < 8) {
+                        editText.setError(getString(R.string.minimum_8_characters_required));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtlength.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtlength;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty));
+                        editText.setTextColor(Color.RED);
+                    } else if (input.length() < 2) {
+                        editText.setError(getString(R.string.the_length_is_too_short));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtdiam.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtdiam;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty));
+                        editText.setTextColor(Color.RED);
+                    } else if (input.length() < 3) {
+                        editText.setError(getString(R.string.this_value_might_be_invalid));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtextmin.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtextmin;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty));
+                        editText.setTextColor(Color.RED);
+                    } else if (input.length() < 3) {
+                        editText.setError(getString(R.string.this_temperature_is_too_low));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtextmax.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtextmax;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty));
+                        editText.setTextColor(Color.RED);
+                    } else if (input.length() < 3) {
+                        editText.setError(getString(R.string.this_temperature_is_too_low));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtbedmin.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtbedmin;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty_use_0));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.txtbedmax.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override
+                public void afterTextChanged(Editable s) {}
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String input = s.toString();
+                    EditText editText = manual.txtbedmax;
+                    if (input.isEmpty()) {
+                        editText.setError(getString(R.string.field_cannot_be_empty_use_0));
+                        editText.setTextColor(Color.RED);
+                    } else {
+                        editText.setError(null);
+                        editText.setTextColor(Color.BLACK);
+                    }
+                }
+            });
+
+            manual.btncls.setOnClickListener(v -> customDialog.dismiss());
+            manual.btncol.setOnClickListener(view -> openPicker());
+
+            manual.btnread.setOnClickListener(v -> {
+                if (currentTag == null) {
+                    Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                NfcA nfcA = NfcA.get(currentTag);
+                if (nfcA != null) {
+                    try {
+                        nfcA.connect();
+                        byte[] data = new byte[144];
+                        ByteBuffer buff = ByteBuffer.wrap(data);
+                        for (int page = 4; page <= 36; page += 4) {
+                            byte[] pageData = nfcA.transceive(new byte[] {(byte) 0x30, (byte)page});
+                            if (pageData != null) {
+                                buff.put(pageData);
+                            }
+                        }
+                        if (buff.array()[0] != (byte) 0x00) {
+                            manual.txttype.setText(new String(subArray(buff.array(), 44, 16), StandardCharsets.UTF_8).trim());
+                            manual.txtsku.setText(new String(subArray(buff.array(), 4, 16), StandardCharsets.UTF_8 ).trim());
+                            manual.txtbrand.setText(new String(subArray(buff.array(), 24, 16), StandardCharsets.UTF_8).trim());
+                            String color = parseColor(subArray(buff.array(), 65, 3));
+                            String alpha = bytesToHex(subArray(buff.array(), 64, 1),false);
+                            if (color.equals("010101")) {color = "000000";}
+                            manual.txtcolor.setText(alpha.toUpperCase() + color.toUpperCase());
+                            manual.txtextmin.setText(String.valueOf(parseNumber(subArray(buff.array(), 80, 2))));
+                            manual.txtextmax.setText(String.valueOf(parseNumber(subArray(buff.array(), 82, 2))));
+                            manual.txtbedmin.setText(String.valueOf(parseNumber(subArray(buff.array(), 100, 2))));
+                            manual.txtbedmax.setText(String.valueOf(parseNumber(subArray(buff.array(), 102, 2))));
+                            manual.txtdiam.setText(String.format("%.2f",parseNumber(subArray(buff.array(),104,2)) / 100.0));
+                            manual.txtlength.setText(String.valueOf(parseNumber(Utils.subArray(buff.array(), 106, 2))));
+                            Toast.makeText(getApplicationContext(), R.string.data_read_from_tag, Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getApplicationContext(), R.string.unknown_or_empty_tag, Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception ignored) {
+                        Toast.makeText(getApplicationContext(), R.string.error_reading_tag, Toast.LENGTH_SHORT).show();
+                    } finally {
+                        try {
+                            nfcA.close();
+                        } catch (Exception ignored) {
+                        }
+                    }
+                } else {
+                    Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            manual.btnwrite.setOnClickListener(v -> {
+                if (manual.txtcolor.getText().length() == 8 && manual.txttype.getText().length() > 0
+                        && manual.txtextmin.getText().length() > 0 && manual.txtextmax.getText().length() > 0
+                        && manual.txtbedmin.getText().length() > 0 && manual.txtbedmax.getText().length() > 0
+                        && manual.txtdiam.getText().length() > 0 && manual.txtlength.getText().length() > 0) {
+
+                    if (currentTag == null) {
+                        Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    NfcA nfcA = NfcA.get(currentTag);
+                    if (nfcA != null) {
+                        try {
+                            nfcA.connect();
+                            nfcAWritePage(nfcA, 4, new byte[]{123, 0, 101, 0});
+                            byte[] skuData = new byte[20];
+                            Arrays.fill(skuData, (byte) 0);
+                            System.arraycopy(manual.txtsku.getText().toString().trim().getBytes(), 0, skuData, 0, Math.min(20, manual.txtsku.getText().toString().length()));
+                            nfcAWritePage(nfcA, 5, subArray(skuData, 0, 4));
+                            nfcAWritePage(nfcA, 6, subArray(skuData, 4, 4));
+                            nfcAWritePage(nfcA, 7, subArray(skuData, 8, 4));
+                            nfcAWritePage(nfcA, 8, subArray(skuData, 12, 4));
+                            byte[] bndData = new byte[20];
+                            Arrays.fill(bndData, (byte) 0);
+                            System.arraycopy(manual.txtbrand.getText().toString().trim().getBytes(), 0, bndData, 0, Math.min(20, manual.txtbrand.getText().toString().length()));
+                            nfcAWritePage(nfcA, 10, subArray(bndData, 0, 4));
+                            nfcAWritePage(nfcA, 11, subArray(bndData, 4, 4));
+                            nfcAWritePage(nfcA, 12, subArray(bndData, 8, 4));
+                            nfcAWritePage(nfcA, 13, subArray(bndData, 12, 4));
+                            byte[] matData = new byte[20];
+                            Arrays.fill(matData, (byte) 0);
+                            System.arraycopy(manual.txttype.getText().toString().trim().getBytes(), 0, matData, 0, Math.min(20, manual.txttype.getText().toString().length()));
+                            nfcAWritePage(nfcA, 15, subArray(matData, 0, 4));
+                            nfcAWritePage(nfcA, 16, subArray(matData, 4, 4));
+                            nfcAWritePage(nfcA, 17, subArray(matData, 8, 4));
+                            nfcAWritePage(nfcA, 18, subArray(matData, 12, 4));
+                            String color = manual.txtcolor.getText().toString().trim().substring(2);
+                            String alpha = manual.txtcolor.getText().toString().trim().substring(0, 2);
+                            if (color.equals("000000")) {color = "010101";}
+                            nfcAWritePage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color)));
+                            byte[] extTemp = new byte[4];
+                            System.arraycopy(numToBytes(Integer.parseInt(manual.txtextmin.getText().toString().trim())), 0, extTemp, 0, 2);
+                            System.arraycopy(numToBytes(Integer.parseInt(manual.txtextmax.getText().toString().trim())), 0, extTemp, 2, 2);
+                            nfcAWritePage(nfcA, 24, extTemp);
+                            byte[] bedTemp = new byte[4];
+                            System.arraycopy(numToBytes(Integer.parseInt(manual.txtbedmin.getText().toString().trim())), 0, bedTemp, 0, 2);
+                            System.arraycopy(numToBytes(Integer.parseInt(manual.txtbedmax.getText().toString().trim())), 0, bedTemp, 2, 2);
+                            nfcAWritePage(nfcA, 29, bedTemp);
+                            byte[] filData = new byte[4];
+                            System.arraycopy(numToBytes(Integer.parseInt(manual.txtdiam.getText().toString().trim().replace(".", ""))), 0, filData, 0, 2);
+                            System.arraycopy(numToBytes(Integer.parseInt(manual.txtlength.getText().toString().trim())), 0, filData, 2, 2);
+                            nfcAWritePage(nfcA, 30, filData);
+                            nfcAWritePage(nfcA, 31, new byte[]{(byte) 232, 3, 0, 0});
+                            playBeep();
+                            Toast.makeText(getApplicationContext(), R.string.data_written_to_tag, Toast.LENGTH_SHORT).show();
+                        } catch (Exception e) {
+                            Toast.makeText(getApplicationContext(), R.string.error_writing_to_tag, Toast.LENGTH_SHORT).show();
+                        } finally {
+                            try {
+                                nfcA.close();
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    } else {
+                        Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+                    }
+                }
+                else {
+                    Toast.makeText(getApplicationContext(), R.string.invalid_input, Toast.LENGTH_SHORT).show();
+                }
+
+            });
+            manual.btnfmt.setOnClickListener(v -> formatTag(currentTag));
+
+            manual.btnrst.setOnClickListener(v -> {
+                manual.txtbedmin.setText("50");
+                manual.txtbedmax.setText("60");
+                manual.txtextmax.setText("220");
+                manual.txtextmin.setText("190");
+                manual.txtlength.setText("330");
+                manual.txtdiam.setText("1.75");
+                manual.txtbrand.setText("");
+                manual.txttype.setText("PLA");
+                manual.txtsku.setText("");
+                manual.txtcolor.setText("FF0000FF");
+                Toast.makeText(getApplicationContext(), R.string.values_reset, Toast.LENGTH_SHORT).show();
+            });
+            customDialog.show();
+        } catch (Exception ignored) {
+        }
     }
 
 }

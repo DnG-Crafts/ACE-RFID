@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:showIn="navigation_view">
+    <item android:title="App Database">
+        <menu>
+            <item
+                android:id="@+id/nav_export"
+                android:icon="@drawable/twotone_export_24"
+                android:title="Export App Database" />
+            <item
+                android:id="@+id/nav_import"
+                android:icon="@drawable/twotone_import_24"
+                android:title="Import App Database" />
+        </menu>
+    </item>
+
+    <item android:title="RFID Functions">
+        <menu>
+            <item
+                android:id="@+id/nav_manual"
+                android:icon="@drawable/twotone_settings_applications_24"
+                android:title="Custom Tag Data Input" />
+            <item
+                android:id="@+id/nav_format"
+                android:icon="@drawable/twotone_layers_clear_24"
+                android:title="Format Tag" />
+            <item
+                android:id="@+id/nav_read"
+                android:icon="@drawable/twotone_contactless_24"
+                android:title="Auto Read"
+                app:actionLayout="@layout/switch_item" />
+        </menu>
+    </item>
+
+    <item android:title="NFC Functions">
+        <menu>
+            <item
+                android:id="@+id/nav_launch"
+                android:icon="@drawable/twotone_nfc_24"
+                android:title="Launch APP"
+                app:actionLayout="@layout/switch_item" />
+        </menu>
+    </item>
+</menu>
