@@ -106,4 +106,7 @@
     <string name="serial">Serial:</string>
     <string name="ultralight_c">Ultralight C</string>
     <string name="ultralight_not_currently_supported">Ultralight not currently supported</string>
+    <string name="format">Format</string>
+    <string name="this_will_erase_the_data_on_the_tag_and_format_it_for_writing">This will erase the data on the tag and format it for writing</string>
+    <string name="format_tag">Format Tag</string>
 </resources>

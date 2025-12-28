@@ -483,6 +483,30 @@ public class Utils {
         }
     }
 
+    public static String getPageDefinition(int page, int type) {
+        if (page == 0) return "UID 0-2 / Internal";
+        if (page == 1) return "UID 3-6";
+        if (page == 2) return "Internal / BCC / Lock Bytes";
+        if (page == 3) return "Capability Container (CC)";
+        if (type == 213 || type == 215 || type == 216) {
+            int cfgStart = (type == 213) ? 41 : (type == 215) ? 131 : 227;
+            if (page >= 4 && page < cfgStart) return "User Data / NDEF";
+            if (page == cfgStart) return "Config (Mirror / Auth0)";
+            if (page == cfgStart + 1) return "Access (PROT / CFGLCK)";
+            if (page == cfgStart + 2) return "PWD (Password)";
+            if (page == cfgStart + 3) return "PACK / Target ID";
+            return "End of Memory";
+        }
+        if (type == 100) {
+            if (page >= 4 && page <= 39) return "User Data";
+            if (page >= 40 && page <= 43) return "3DES Keys (Write-Only)";
+            if (page == 44) return "Auth Start (AUTH0)";
+            if (page == 45) return "Auth Config (AUTH1)";
+            return "Internal";
+        }
+        return "Unknown";
+    }
+
     public static String[] filamentVendors = {
             "3Dgenius",
             "3DJake",

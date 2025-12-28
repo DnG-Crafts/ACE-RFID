@@ -5,6 +5,7 @@ import dngsoftware.acerfid.databinding.ActivityMainBinding;
 import dngsoftware.acerfid.databinding.AddDialogBinding;
 import dngsoftware.acerfid.databinding.ManualDialogBinding;
 import dngsoftware.acerfid.databinding.PickerDialogBinding;
+import dngsoftware.acerfid.databinding.TagDialogBinding;
 import static dngsoftware.acerfid.Utils.GetBrand;
 import static dngsoftware.acerfid.Utils.GetDefaultTemps;
 import static dngsoftware.acerfid.Utils.GetMaterialLength;
@@ -21,6 +22,7 @@ import static dngsoftware.acerfid.Utils.copyUriToFile;
 import static dngsoftware.acerfid.Utils.filamentTypes;
 import static dngsoftware.acerfid.Utils.filamentVendors;
 import static dngsoftware.acerfid.Utils.getAllMaterials;
+import static dngsoftware.acerfid.Utils.getPageDefinition;
 import static dngsoftware.acerfid.Utils.hexToByte;
 import static dngsoftware.acerfid.Utils.materialWeights;
 import static dngsoftware.acerfid.Utils.numToBytes;
@@ -75,12 +77,15 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.core.view.GravityCompat;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -114,8 +119,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     int tagType;
     ArrayAdapter<String> madapter, sadapter;
     String MaterialName, MaterialWeight = "1 KG", MaterialColor = "FF0000FF";
-    Dialog pickerDialog, addDialog, customDialog;
+    Dialog pickerDialog, addDialog, customDialog, tagDialog;
     AlertDialog inputDialog;
+    tagAdapter recycleAdapter;
+    RecyclerView recyclerView;
+    tagItem[] tagItems;
     int SelectedSize;
     boolean userSelect = false;
     private ActivityMainBinding main;
@@ -131,8 +139,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private int pendingAction = -1;
     NavigationView navigationView;
     private DrawerLayout drawerLayout;
-
-
     private static final int PERMISSION_REQUEST_CODE = 2;
     private PickerDialogBinding colorDialog;
 
@@ -673,37 +679,54 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
 
     private void formatTag(Tag tag) {
-        new Thread(() -> {
-            if (tag == null) {
-                showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
-                return;
-            }
-            try (NfcA nfcA = NfcA.get(tag)) {
-                try {
-                    byte[] ccBytes;
-                    if (tagType == 216) {
-                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x6D, (byte) 0x00};
-                    } else if (tagType == 215) {
-                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x3E, (byte) 0x00};
-                    } else if (tagType == 100) {
-                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x06, (byte) 0x00};
-                    } else {
-                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x12, (byte) 0x00};
-                    }
-                    showToast(R.string.formatting_tag, Toast.LENGTH_SHORT);
-                    removeTagPassword(nfcA);
-                    writeTagPage(nfcA, 2, new byte[]{0x00, 0x00, 0x00, 0x00});
-                    writeTagPage(nfcA, 3, ccBytes);
-                    for (int i = 4; i < 32; i++) {
-                        writeTagPage(nfcA, i, new byte[]{0x00, 0x00, 0x00, 0x00});
-                    }
-                    showToast(R.string.tag_formatted, Toast.LENGTH_SHORT);
-                } catch (Exception e) {
-                    showToast(R.string.failed_to_format_tag_for_writing, Toast.LENGTH_SHORT);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        SpannableString titleText = new SpannableString(getString(R.string.format_tag));
+        titleText.setSpan(new ForegroundColorSpan(Color.parseColor("#1976D2")), 0, titleText.length(), 0);
+        SpannableString messageText = new SpannableString(getString(R.string.this_will_erase_the_data_on_the_tag_and_format_it_for_writing));
+        messageText.setSpan(new ForegroundColorSpan(Color.BLACK), 0, messageText.length(), 0);
+        builder.setTitle(titleText);
+        builder.setMessage(messageText);
+        builder.setPositiveButton(R.string.format, (dialog, which) -> {
+            new Thread(() -> {
+                if (tag == null) {
+                    showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
+                    return;
                 }
-            } catch (Exception ignored) {
-            }
-        }).start();
+                try (NfcA nfcA = NfcA.get(tag)) {
+                    try {
+                        byte[] ccBytes;
+                        if (tagType == 216) {
+                            ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x6D, (byte) 0x00};
+                        } else if (tagType == 215) {
+                            ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x3E, (byte) 0x00};
+                        } else if (tagType == 100) {
+                            ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x06, (byte) 0x00};
+                        } else {
+                            ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x12, (byte) 0x00};
+                        }
+                        showToast(R.string.formatting_tag, Toast.LENGTH_SHORT);
+                        removeTagPassword(nfcA);
+                        writeTagPage(nfcA, 2, new byte[]{0x00, 0x00, 0x00, 0x00});
+                        writeTagPage(nfcA, 3, ccBytes);
+                        for (int i = 4; i < 32; i++) {
+                            writeTagPage(nfcA, i, new byte[]{0x00, 0x00, 0x00, 0x00});
+                        }
+                        showToast(R.string.tag_formatted, Toast.LENGTH_SHORT);
+                    } catch (Exception e) {
+                        showToast(R.string.failed_to_format_tag_for_writing, Toast.LENGTH_SHORT);
+                    }
+                } catch (Exception ignored) {
+                }
+            }).start();
+        });
+        builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
+        AlertDialog alert = builder.create();
+        alert.show();
+        if (alert.getWindow() != null) {
+            alert.getWindow().setBackgroundDrawableResource(android.R.color.white);
+            alert.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#1976D2"));
+            alert.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#1976D2"));
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1549,6 +1572,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             openCustom();
         }else if (id == R.id.nav_format) {
             formatTag(currentTag);
+        } else if (id == R.id.nav_memory) {
+            loadTagMemory();
         }
         drawerLayout.closeDrawer(GravityCompat.START);
         return true;
@@ -1897,14 +1922,79 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             Toast.makeText(getApplicationContext(), message, duration).show();
         });
     }
-    
+
+    void loadTagMemory() {
+        try {
+            tagDialog = new Dialog(this, R.style.Theme_AceRFID);
+            tagDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+            tagDialog.setCanceledOnTouchOutside(false);
+            tagDialog.setTitle("Tag Memory");
+            TagDialogBinding tdl = TagDialogBinding.inflate(getLayoutInflater());
+            View rv = tdl.getRoot();
+            tagDialog.setContentView(rv);
+            tdl.btncls.setOnClickListener(v -> tagDialog.dismiss());
+            recyclerView = tdl.recyclerView;
+            LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+            layoutManager.setOrientation(LinearLayoutManager.VERTICAL);
+            layoutManager.scrollToPosition(0);
+            recyclerView.setLayoutManager(layoutManager);
+            tdl.btnread.setOnClickListener(v -> readTagMemory(tdl));
+            tagDialog.show();
+            readTagMemory(tdl);
+        } catch (Exception ignored) {}
+    }
 
 
+ void readTagMemory(TagDialogBinding tdl)
+ {
+     try {
+         if (currentTag == null) {
+             showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
+             return;
+         }
+         NfcA nfcA = NfcA.get(currentTag);
+         if (nfcA != null) {
+             if (!nfcA.isConnected()) nfcA.connect();
+             int maxPages = (tagType == 216) ? 231 : (tagType == 215) ? 135 : 45;
+             if (tagType == 100) maxPages = 48; // Ultralight C
+             tdl.lbldesc.setText(tagType == 100 ? "UL-C" : "NTAG" + tagType);
+             tagItems = new tagItem[maxPages];
+             for (int i = 0; i < maxPages; i += 4) {
+                 byte[] data = nfcA.transceive(new byte[]{0x30, (byte) i});
+                 for (int offset = 0; offset < 4; offset++) {
+                     int currentPage = i + offset;
+                     if (currentPage >= maxPages) break;
+                     byte[] pageData = new byte[4];
+                     System.arraycopy(data, offset * 4, pageData, 0, 4);
+                     String hexString = bytesToHex(pageData, true);
+                     String definition = getPageDefinition(currentPage, tagType);
+                     tagItems[currentPage] = new tagItem();
+                     tagItems[currentPage].tKey  = String.format(Locale.getDefault(), "Page %d | %s", currentPage, definition);
+                     tagItems[currentPage].tValue = hexString;
+                     if (currentPage < 2) {
+                         tagItems[currentPage].tImage = AppCompatResources.getDrawable(this, R.drawable.locked);
+                     } else if(definition.contains("User Data")) {
+                         tagItems[currentPage].tImage = AppCompatResources.getDrawable(this, R.drawable.writable);
+                     } else {
+                         tagItems[currentPage].tImage = AppCompatResources.getDrawable(this, R.drawable.internal);
+                     }
+                 }
+             }
 
-
-
-
-
-
+             recycleAdapter = new tagAdapter(getBaseContext(), tagItems);
+             recycleAdapter.setHasStableIds(true);
+             runOnUiThread(() -> {
+                 recyclerView.removeAllViewsInLayout();
+                 recyclerView.setAdapter(null);
+                 recyclerView.setAdapter(recycleAdapter);
+             });
+         }
+         else {
+             showToast(R.string.error_reading_tag, Toast.LENGTH_SHORT);
+         }
+     } catch (Exception ignored) {
+         showToast(R.string.error_reading_tag, Toast.LENGTH_SHORT);
+     }
+ }
 
 }

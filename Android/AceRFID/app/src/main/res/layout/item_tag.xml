@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:card_view="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cardview"
+    android:clickable="true"
+    android:focusable="true"
+    android:focusableInTouchMode="false"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="6dp"
+    card_view:cardCornerRadius="7dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#F8F8FF"
+        android:focusable="true">
+
+        <TextView
+            android:id="@+id/itemKey"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="start"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="@color/text_color"
+            android:textSize="16sp"
+            android:padding="6dp"
+            android:textStyle="bold"
+            card_view:layout_constraintBottom_toTopOf="@+id/itemValue"
+            card_view:layout_constraintStart_toEndOf="@+id/itemImage"
+            card_view:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/itemValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="start"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="@color/text_color"
+            android:textSize="14sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="2dp"
+            android:paddingBottom="6dp"
+            android:textStyle="normal"
+            card_view:layout_constraintBottom_toBottomOf="parent"
+            card_view:layout_constraintStart_toEndOf="@+id/itemImage"
+            card_view:layout_constraintTop_toBottomOf="@+id/itemKey"/>
+
+        <ImageView
+            android:id="@+id/itemImage"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            card_view:layout_constraintBottom_toBottomOf="parent"
+            card_view:layout_constraintStart_toStartOf="parent"
+            card_view:layout_constraintTop_toTopOf="parent"
+            android:importantForAccessibility="no"
+            card_view:srcCompat="@drawable/writable" />
+
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.cardview.widget.CardView>
