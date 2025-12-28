@@ -39,8 +39,6 @@
     <string name="help">Help</string>
     <string name="extruder_min">Extruder Min:</string>
     <string name="extruder_max">Extruder Max:</string>
-    <string name="serial">Serial:</string>
-    <string name="vendor">Vendor:</string>
     <string name="bed_min">Bed Min:</string>
     <string name="bed_max">Bed Max:</string>
     <string name="helpurl">https://github.com/DnG-Crafts/ACE-RFID/blob/main/docs/Filament/Filament.md</string>
@@ -95,4 +93,17 @@
     <string name="the_length_is_too_short">The length is too short\nThe value is length in meters</string>
     <string name="minimum_8_characters_required">Minimum 8 characters required\nThe Format is: AARRGGBB</string>
     <string name="custom_tag_data">Custom Tag Data</string>
+    <string name="tag_is_password_protected_unable_to_write_to_this_tag">Tag is password protected\nUnable to write to this tag</string>
+    <string name="tag_is_password_protected_trying_default_password">Tag is password protected\nTrying default passwords</string>
+    <string name="password_failed_unable_to_write_to_this_tag">Password failed\nUnable to write to this tag</string>
+    <string name="ext_max">Ext Max:</string>
+    <string name="ext_min">Ext Min:</string>
+    <string name="diameter">Diameter:</string>
+    <string name="length">Length:</string>
+    <string name="brand">Brand:</string>
+    <string name="sku">SKU:</string>
+    <string name="vendor">Vendor:</string>
+    <string name="serial">Serial:</string>
+    <string name="ultralight_c">Ultralight C</string>
+    <string name="ultralight_not_currently_supported">Ultralight not currently supported</string>
 </resources>

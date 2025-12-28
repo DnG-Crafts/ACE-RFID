@@ -111,6 +111,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private filamentDB rdb;
     private NfcAdapter nfcAdapter;
     Tag currentTag = null;
+    int tagType;
     ArrayAdapter<String> madapter, sadapter;
     String MaterialName, MaterialWeight = "1 KG", MaterialColor = "FF0000FF";
     Dialog pickerDialog, addDialog, customDialog;
@@ -220,7 +221,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 options.putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250);
                 nfcAdapter.enableReaderMode(this, this, NfcAdapter.FLAG_READER_NFC_A, options);
             } else {
-                Toast.makeText(getApplicationContext(), R.string.please_activate_nfc, Toast.LENGTH_LONG).show();
+                showToast(R.string.please_activate_nfc, Toast.LENGTH_LONG);
                 startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
                 finish();
             }
@@ -319,10 +320,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 byte[] uid = tag.getId();
                 if (uid.length >= 6) {
                     currentTag = tag;
-                    Toast.makeText(getApplicationContext(), getString(R.string.tag_found) + bytesToHex(uid, false), Toast.LENGTH_SHORT).show();
-                    int tagType = getNtagType(NfcA.get(currentTag));
+                    showToast(getString(R.string.tag_found) + bytesToHex(uid, false), Toast.LENGTH_SHORT);
+                    tagType = getTagType(NfcA.get(currentTag));
                     main.tagid.setText(bytesToHex(uid, true));
-                    main.tagtype.setText(String.format(Locale.getDefault(), "   NTAG%d", tagType));
+                    if (tagType == 100) {
+                        main.tagtype.setText(R.string.ultralight_c);
+                    }
+                    else {
+                        main.tagtype.setText(String.format(Locale.getDefault(), "   NTAG%d", tagType));
+                    }
                     main.lbltagid.setVisibility(View.VISIBLE);
                     main.lbltagtype.setVisibility(View.VISIBLE);
                     if (GetSetting(this, "autoread", false)) {
@@ -335,7 +341,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     main.tagtype.setText("");
                     main.lbltagid.setVisibility(View.INVISIBLE);
                     main.lbltagtype.setVisibility(View.INVISIBLE);
-                    Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+                    showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
                 }
             });
         } catch (Exception ignored) {
@@ -383,10 +389,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     assert currentTag != null;
                     byte[] uid = currentTag.getId();
                     if (uid.length >= 6) {
-                        int tagType = getNtagType(NfcA.get(currentTag));
-                        Toast.makeText(getApplicationContext(), getString(R.string.tag_found) + bytesToHex(uid, false), Toast.LENGTH_SHORT).show();
+                        tagType = getTagType(NfcA.get(currentTag));
+                        showToast(getString(R.string.tag_found) + bytesToHex(uid, false), Toast.LENGTH_SHORT);
                         main.tagid.setText(bytesToHex(uid, true));
-                        main.tagtype.setText(String.format(Locale.getDefault(), "   NTAG%d", tagType));
+                        if (tagType == 100) {
+                            main.tagtype.setText(R.string.ultralight_c);
+                        }
+                        else {
+                            main.tagtype.setText(String.format(Locale.getDefault(), "   NTAG%d", tagType));
+                        }
                         main.lbltagid.setVisibility(View.VISIBLE);
                         main.lbltagtype.setVisibility(View.VISIBLE);
                         if (GetSetting(this, "autoread", false)) {
@@ -399,7 +410,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         main.tagtype.setText("");
                         main.lbltagid.setVisibility(View.INVISIBLE);
                         main.lbltagtype.setVisibility(View.INVISIBLE);
-                        Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
                     }
                 }
             } catch (Exception ignored) {
@@ -409,17 +420,16 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
     private void readTag(Tag tag) {
         if (tag == null) {
-            Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
+            showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
             return;
         }
         NfcA nfcA = NfcA.get(tag);
         if (nfcA != null) {
             try {
-                nfcA.connect();
                 byte[] data = new byte[144];
                 ByteBuffer buff = ByteBuffer.wrap(data);
                 for (int page = 4; page <= 36; page += 4) {
-                    byte[] pageData = nfcA.transceive(new byte[] {(byte) 0x30, (byte)page});
+                    byte[] pageData = transceive(nfcA, new byte[] {(byte) 0x30, (byte)page});
                     if (pageData != null) {
                         buff.put(pageData);
                     }
@@ -434,8 +444,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     MaterialColor =  alpha + color;
                     main.colorview.setBackgroundColor(Color.parseColor("#" + MaterialColor));
 
-
-
                     // String sku = new String(subArray(buff.array(), 4, 16), StandardCharsets.UTF_8 ).trim();
                     // String Brand = new String(subArray(buff.array(), 24, 16), StandardCharsets.UTF_8).trim();
                     int extMin = parseNumber(subArray(buff.array(), 80, 2));
@@ -446,147 +454,256 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     // int diameter = parseNumber(subArray(buff.array(),104,2));
                     MaterialWeight = GetMaterialWeight(parseNumber(subArray(buff.array(), 106, 2)));
                     main.spoolsize.setSelection(sadapter.getPosition(MaterialWeight));
-                    Toast.makeText(getApplicationContext(), R.string.data_read_from_tag, Toast.LENGTH_SHORT).show();
+                    showToast(R.string.data_read_from_tag, Toast.LENGTH_SHORT);
                     userSelect = false;
                 } else {
-                    Toast.makeText(getApplicationContext(), R.string.unknown_or_empty_tag, Toast.LENGTH_SHORT).show();
+                    showToast(R.string.unknown_or_empty_tag, Toast.LENGTH_SHORT);
                 }
             } catch (Exception ignored) {
-                Toast.makeText(getApplicationContext(), R.string.error_reading_tag, Toast.LENGTH_SHORT).show();
+                showToast(R.string.error_reading_tag, Toast.LENGTH_SHORT);
             } finally {
                 try {
-                    nfcA.close();
+                    if (nfcA.isConnected()) nfcA.close();
                 } catch (Exception ignored) {
                 }
             }
         } else {
-            Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+            showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
         }
     }
 
-    private void nfcAWritePage(NfcA nfcA, int page, byte[] data) throws Exception {
+    private void writeTagPage(NfcA nfcA, int page, byte[] data) throws Exception {
         byte[] cmd = new byte[6];
         cmd[0] = (byte) 0xA2;
         cmd[1] = (byte) page;
         System.arraycopy(data, 0, cmd, 2, data.length);
-        nfcA.transceive(cmd);
+        transceive(nfcA, cmd);
+    }
+
+    private boolean authenticateTag(NfcA nfcA, byte[] password) throws Exception {
+        byte[] cmd = new byte[5];
+        cmd[0] = (byte) 0x1B;
+        System.arraycopy(password, 0, cmd, 1, 4);
+        nfcA.setTimeout(500);
+        byte[] response = transceive(nfcA, cmd);
+        return response != null && response.length == 2;
+    }
+
+    public void setTagPassword(NfcA nfcA, byte[] newPassword, byte[] newPack) throws Exception {
+        int pagePwd;
+        int pagePack;
+        int pageCfg;
+        if (tagType == 213) {
+             pagePwd = 43;
+             pagePack = 44;
+             pageCfg = 41;
+        } else if (tagType == 215) {
+            pagePwd = 133;
+            pagePack = 134;
+            pageCfg = 131;
+        } else if (tagType == 216) {
+            pagePwd = 229;
+            pagePack = 230;
+            pageCfg = 227;
+        } else if (tagType == 100) {
+            showToast(getString(R.string.ultralight_not_currently_supported), Toast.LENGTH_SHORT);
+            return;
+        } else {
+            return;
+        }
+        transceive(nfcA, new byte[]{(byte)0xA2, (byte)pagePwd, newPassword[0], newPassword[1], newPassword[2], newPassword[3]});
+        transceive(nfcA, new byte[]{(byte)0xA2, (byte)pagePack, newPack[0], newPack[1], (byte)0x00, (byte)0x00});
+        byte[] cfg = transceive(nfcA, new byte[]{(byte)0x30, (byte)pageCfg});
+        transceive(nfcA, new byte[]{(byte)0xA2, (byte)pageCfg, cfg[0], cfg[1], cfg[2], (byte)0x04});
+    }
+
+    public void removeTagPassword(NfcA nfcA) throws Exception {
+        if (checkTagAuth(nfcA)) {
+            int pagePwd;
+            int pagePack;
+            int accessPage;
+            int pageCfg;
+            if (tagType == 213) {
+                pagePwd = 43;
+                pagePack = 44;
+                accessPage = 42;
+                pageCfg = 41;
+            } else if (tagType == 215) {
+                pagePwd = 133;
+                pagePack = 134;
+                accessPage = 132;
+                pageCfg = 131;
+            } else if (tagType == 216) {
+                pagePwd = 229;
+                pagePack = 230;
+                accessPage = 228;
+                pageCfg = 227;
+            } else if (tagType == 100) {
+                transceive(nfcA, new byte[]{(byte) 0xA2, (byte) 42, (byte) 0xFF, 0x00, 0x00, 0x00});
+                return;
+            } else {
+                return;
+            }
+            byte[] cfg = transceive(nfcA, new byte[]{(byte) 0x30, (byte) pageCfg});
+            transceive(nfcA, new byte[]{(byte) 0xA2, (byte) pageCfg, cfg[0], cfg[1], cfg[2], (byte) 0xFF});
+            transceive(nfcA, new byte[]{(byte) 0xA2, (byte) pagePwd, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00});
+            transceive(nfcA, new byte[]{(byte) 0xA2, (byte) pagePack, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00});
+            transceive(nfcA, new byte[]{(byte) 0xA2, (byte) accessPage, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00});
+        }
     }
 
     private void writeTag(Tag tag) {
-        if (tag == null) {
-            Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        NfcA nfcA = NfcA.get(tag);
-        if (nfcA != null) {
-            try {
-                nfcA.connect();
-                nfcAWritePage(nfcA, 4, new byte[]{123, 0, 101, 0});
-                for (int i = 0; i < 5; i++) { //sku
-                    nfcAWritePage(nfcA, 5 + i, subArray(GetSku(matDb, MaterialName), i * 4, 4));
-                }
-                for (int i = 0; i < 5; i++) { //brand
-                    nfcAWritePage(nfcA, 10 + i, subArray(GetBrand(matDb, MaterialName), i * 4, 4));
-                }
-                byte[] matData = new byte[20];
-                Arrays.fill(matData, (byte) 0);
-                System.arraycopy(MaterialName.getBytes(), 0, matData, 0, Math.min(20, MaterialName.length()));
-                nfcAWritePage(nfcA, 15, subArray(matData, 0, 4));   //type
-                nfcAWritePage(nfcA, 16, subArray(matData, 4, 4));   //type
-                nfcAWritePage(nfcA, 17, subArray(matData, 8, 4));   //type
-                nfcAWritePage(nfcA, 18, subArray(matData, 12, 4));  //type
-                String color = MaterialColor.substring(2);
-                String alpha = MaterialColor.substring(0, 2);
-                if (color.equals("000000")) {
-                    color = "010101";
-                }// basic fix for anycubic setting black to transparent
-                nfcAWritePage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color))); //color
-                byte[] extTemp = new byte[4];
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[0]), 0, extTemp, 0, 2); //min
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[1]), 0, extTemp, 2, 2); //max
-                nfcAWritePage(nfcA, 24, extTemp);
-                byte[] bedTemp = new byte[4];
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[2]), 0, bedTemp, 0, 2); //min
-                System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[3]), 0, bedTemp, 2, 2); //max
-                nfcAWritePage(nfcA, 29, bedTemp);
-                byte[] filData = new byte[4];
-                System.arraycopy(numToBytes(175), 0, filData, 0, 2); //diameter
-                System.arraycopy(numToBytes(GetMaterialLength(MaterialWeight)), 0, filData, 2, 2); //length
-                nfcAWritePage(nfcA, 30, filData);
-                nfcAWritePage(nfcA, 31, new byte[]{(byte) 232, 3, 0, 0}); //?
-                playBeep();
-                Toast.makeText(getApplicationContext(), R.string.data_written_to_tag, Toast.LENGTH_SHORT).show();
-            } catch (Exception e) {
-                Toast.makeText(getApplicationContext(), R.string.error_writing_to_tag, Toast.LENGTH_SHORT).show();
-            } finally {
-                try {
-                    nfcA.close();
-                } catch (Exception ignored) {}
+        new Thread(() -> {
+            if (tag == null) {
+                showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
+                return;
             }
-        } else {
-            Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
-        }
+            NfcA nfcA = NfcA.get(tag);
+            if (nfcA != null) {
+                try {
+                    checkTagAuth(nfcA);
+                    writeTagPage(nfcA, 4, new byte[]{123, 0, 101, 0});
+                    for (int i = 0; i < 5; i++) { //sku
+                        writeTagPage(nfcA, 5 + i, subArray(GetSku(matDb, MaterialName), i * 4, 4));
+                    }
+                    for (int i = 0; i < 5; i++) { //brand
+                        writeTagPage(nfcA, 10 + i, subArray(GetBrand(matDb, MaterialName), i * 4, 4));
+                    }
+                    byte[] matData = new byte[20];
+                    Arrays.fill(matData, (byte) 0);
+                    System.arraycopy(MaterialName.getBytes(), 0, matData, 0, Math.min(20, MaterialName.length()));
+                    writeTagPage(nfcA, 15, subArray(matData, 0, 4));   //type
+                    writeTagPage(nfcA, 16, subArray(matData, 4, 4));   //type
+                    writeTagPage(nfcA, 17, subArray(matData, 8, 4));   //type
+                    writeTagPage(nfcA, 18, subArray(matData, 12, 4));  //type
+                    String color = MaterialColor.substring(2);
+                    String alpha = MaterialColor.substring(0, 2);
+                    if (color.equals("000000")) {
+                        color = "010101";
+                    }
+                    writeTagPage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color))); //color
+                    byte[] extTemp = new byte[4];
+                    System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[0]), 0, extTemp, 0, 2); //min
+                    System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[1]), 0, extTemp, 2, 2); //max
+                    writeTagPage(nfcA, 24, extTemp);
+                    byte[] bedTemp = new byte[4];
+                    System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[2]), 0, bedTemp, 0, 2); //min
+                    System.arraycopy(numToBytes(GetTemps(matDb, MaterialName)[3]), 0, bedTemp, 2, 2); //max
+                    writeTagPage(nfcA, 29, bedTemp);
+                    byte[] filData = new byte[4];
+                    System.arraycopy(numToBytes(175), 0, filData, 0, 2); //diameter
+                    System.arraycopy(numToBytes(GetMaterialLength(MaterialWeight)), 0, filData, 2, 2); //length
+                    writeTagPage(nfcA, 30, filData);
+                    writeTagPage(nfcA, 31, new byte[]{(byte) 232, 3, 0, 0}); // weight in grams
+                    playBeep();
+                    showToast(R.string.data_written_to_tag, Toast.LENGTH_SHORT);
+                } catch (Exception e) {
+                    showToast(R.string.error_writing_to_tag, Toast.LENGTH_SHORT);
+                } finally {
+                    try {
+                       if (nfcA.isConnected()) nfcA.close();
+                    } catch (Exception ignored) {}
+                }
+            } else {
+                showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
+            }
+        }).start();
     }
 
-    private int getNtagType(NfcA nfcA) {
-        if (probePage(nfcA, (byte) 50)) {
-            if (probePage(nfcA, (byte) 150)) {
-                return 216;
+    private boolean checkTagAuth(NfcA nfcA) {
+        try {
+            int configStartPage;
+            if (tagType == 213) {
+                configStartPage = 41;
+            } else if (tagType == 215) {
+                configStartPage = 131;
+            } else if (tagType == 216) {
+                configStartPage = 227;
+            } else if (tagType == 100) {
+                configStartPage = 42;
             } else {
-                return 215;
+                return false;
             }
-        } else {
-            return 213;
-        }
+            byte[] configData = transceive(nfcA, new byte[] {(byte)0x30, (byte)configStartPage});
+            if (configStartPage == 42)
+            {
+                if ((configData[0] & 0xFF) < 48) {
+                    showToast(R.string.tag_is_password_protected_unable_to_write_to_this_tag, Toast.LENGTH_SHORT);
+                    return true;
+                }
+                return false;
+            }
+            else {
+                if ((configData[3] & 0xFF) < 255) {
+                    showToast(R.string.tag_is_password_protected_trying_default_password, Toast.LENGTH_SHORT);
+                    if (!authenticateTag(nfcA, new byte[]{(byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF})) {
+                        if (!authenticateTag(nfcA, new byte[]{0, 0, 0, 0})) {
+                            showToast(R.string.password_failed_unable_to_write_to_this_tag, Toast.LENGTH_SHORT);
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            }
+        } catch (Exception ignored) {return false;}
+    }
+
+    private int getTagType(NfcA nfcA) {
+        if (probePage(nfcA, (byte) 220)) return 216;
+        if (probePage(nfcA, (byte) 125)) return 215;
+        if (probePage(nfcA, (byte) 47)) return 100;
+        return 213;
     }
 
     private boolean probePage(NfcA nfcA, byte pageNumber) {
-        try {
-            nfcA.connect();
-            byte[] result = nfcA.transceive(new byte[] {(byte) 0x30, pageNumber});
-            if (result != null && result.length == 16) {
-                return true;
-            }
-        } catch (Exception ignored) {
-        } finally {
+        try (nfcA) {
             try {
-                nfcA.close();
+                byte[] result = transceive(nfcA, new byte[]{(byte) 0x30, pageNumber});
+                if (result != null && result.length == 16) {
+                    return true;
+                }
             } catch (Exception ignored) {}
-        }
+        } catch (Exception ignored) {}
         return false;
     }
 
+    private byte[] transceive(NfcA nfcA, byte[] data) throws Exception {
+        if (!nfcA.isConnected()) nfcA.connect();
+        return nfcA.transceive(data);
+    }
+
     private void formatTag(Tag tag) {
-        if (tag == null) {
-            Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        NfcA nfcA = NfcA.get(tag);
-        try {
-            int tagType = getNtagType(nfcA);
-            byte[] ccBytes;
-            if (tagType == 216) {
-                ccBytes = new byte[] {(byte) 0xE1, (byte) 0x10, (byte) 0x6D, (byte) 0x00};
-            } else if (tagType == 215) {
-                ccBytes = new byte[] {(byte) 0xE1, (byte) 0x10, (byte) 0x3E, (byte) 0x00};
-            } else {
-                ccBytes = new byte[] {(byte) 0xE1, (byte) 0x10, (byte) 0x12, (byte) 0x00};
+        new Thread(() -> {
+            if (tag == null) {
+                showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
+                return;
             }
-            Toast.makeText(getApplicationContext(), R.string.formatting_tag, Toast.LENGTH_SHORT).show();
-            nfcA.connect();
-            nfcAWritePage(nfcA, 2, new byte[] {0x00, 0x00, 0x00, 0x00});
-            nfcAWritePage(nfcA, 3, ccBytes);
-            for (int i = 4; i < 32; i++) {
-                nfcAWritePage(nfcA, i, new byte[] {0x00, 0x00, 0x00, 0x00});
+            try (NfcA nfcA = NfcA.get(tag)) {
+                try {
+                    byte[] ccBytes;
+                    if (tagType == 216) {
+                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x6D, (byte) 0x00};
+                    } else if (tagType == 215) {
+                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x3E, (byte) 0x00};
+                    } else if (tagType == 100) {
+                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x06, (byte) 0x00};
+                    } else {
+                        ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x12, (byte) 0x00};
+                    }
+                    showToast(R.string.formatting_tag, Toast.LENGTH_SHORT);
+                    removeTagPassword(nfcA);
+                    writeTagPage(nfcA, 2, new byte[]{0x00, 0x00, 0x00, 0x00});
+                    writeTagPage(nfcA, 3, ccBytes);
+                    for (int i = 4; i < 32; i++) {
+                        writeTagPage(nfcA, i, new byte[]{0x00, 0x00, 0x00, 0x00});
+                    }
+                    showToast(R.string.tag_formatted, Toast.LENGTH_SHORT);
+                } catch (Exception e) {
+                    showToast(R.string.failed_to_format_tag_for_writing, Toast.LENGTH_SHORT);
+                }
+            } catch (Exception ignored) {
             }
-            Toast.makeText(getApplicationContext(), R.string.tag_formatted, Toast.LENGTH_SHORT).show();
-        } catch (Exception ignored) {
-            Toast.makeText(getApplicationContext(), R.string.failed_to_format_tag_for_writing, Toast.LENGTH_SHORT).show();
-        } finally {
-            try {
-                nfcA.close();
-            } catch (Exception ignored) {}
-        }
+        }).start();
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -625,7 +742,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
             setupPresetColors(dl);
             updateColorDisplay(dl, dl.alphaSlider.getProgress(), dl.redSlider.getProgress(), dl.greenSlider.getProgress(), dl.blueSlider.getProgress());
-
 
             setupGradientPicker(dl);
 
@@ -731,7 +847,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
     void openAddDialog(boolean edit) {
         try {
-
             if (!Utils.GetSetting(this,"CFN",false)) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(this);
                 SpannableString titleText = new SpannableString(getString(R.string.notice));
@@ -789,11 +904,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
            dl.btnsave.setOnClickListener(v -> {
                if (dl.txtserial.getText().toString().isEmpty() || dl.txtextmin.getText().toString().isEmpty() || dl.txtextmax.getText().toString().isEmpty() || dl.txtbedmin.getText().toString().isEmpty() || dl.txtbedmax.getText().toString().isEmpty()) {
-                   Toast.makeText(getApplicationContext(), R.string.fill_all_fields, Toast.LENGTH_SHORT).show();
+                   showToast(R.string.fill_all_fields, Toast.LENGTH_SHORT);
                    return;
                }
                if (dl.chkvendor.isChecked() && dl.txtvendor.getText().toString().isEmpty()) {
-                   Toast.makeText(getApplicationContext(), R.string.fill_all_fields, Toast.LENGTH_SHORT).show();
+                   showToast(R.string.fill_all_fields, Toast.LENGTH_SHORT);
                    return;
                }
 
@@ -993,7 +1108,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             if (isValidHexCode(hexInput)) {
                 setSlidersFromColor(dl, Color.parseColor("#" + hexInput));
             } else {
-                Toast.makeText(MainActivity.this, R.string.invalid_hex_code_please_use_aarrggbb_format, Toast.LENGTH_LONG).show();
+                showToast(R.string.invalid_hex_code_please_use_aarrggbb_format, Toast.LENGTH_LONG);
             }
         });
         builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.cancel());
@@ -1121,10 +1236,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                             );
                             performSAFExport(treeUri);
                         } else {
-                            Toast.makeText(this, R.string.failed_to_get_export_directory, Toast.LENGTH_SHORT).show();
+                            showToast(R.string.failed_to_get_export_directory, Toast.LENGTH_SHORT);
                         }
                     } else {
-                        Toast.makeText(this, R.string.export_cancelled, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.export_cancelled, Toast.LENGTH_SHORT);
                     }
                 }
         );
@@ -1137,10 +1252,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         if (fileUri != null) {
                             performSAFImport(fileUri);
                         } else {
-                            Toast.makeText(this, R.string.failed_to_select_import_file, Toast.LENGTH_SHORT).show();
+                            showToast(R.string.failed_to_select_import_file, Toast.LENGTH_SHORT);
                         }
                     } else {
-                        Toast.makeText(this, R.string.import_cancelled, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.import_cancelled, Toast.LENGTH_SHORT);
                     }
                 }
         );
@@ -1155,7 +1270,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                             performLegacyImport();
                         }
                     } else {
-                        Toast.makeText(this, R.string.storage_permission_denied_cannot_perform_action, Toast.LENGTH_LONG).show();
+                        showToast(R.string.storage_permission_denied_cannot_perform_action, Toast.LENGTH_LONG);
                     }
                     pendingAction = -1;
                 }
@@ -1169,7 +1284,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         setupPhotoPicker(colorDialog.photoImage);
                     } else {
                         // Handle failure or cancellation
-                        Toast.makeText(this, R.string.photo_capture_cancelled_or_failed, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.photo_capture_cancelled_or_failed, Toast.LENGTH_SHORT);
                     }
                 }
         );
@@ -1209,7 +1324,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 filamentDB.closeInstance();
                 DocumentFile pickedDir = DocumentFile.fromTreeUri(this, treeUri);
                 if (pickedDir == null || !pickedDir.exists() || !pickedDir.canWrite()) {
-                    runOnUiThread(() -> Toast.makeText(this, R.string.cannot_write_to_selected_directory, Toast.LENGTH_LONG).show());
+                    showToast(R.string.cannot_write_to_selected_directory, Toast.LENGTH_LONG);
                     return;
                 }
                 String dbBaseName = dbFile.getName().replace(".db", "");
@@ -1217,12 +1332,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 if (dbDestFile != null) {
                     copyFileToUri(this, dbFile, dbDestFile.getUri());
                 } else {
-                    runOnUiThread(() -> Toast.makeText(this, R.string.failed_to_create_db_backup_file, Toast.LENGTH_LONG).show());
+                    showToast(R.string.failed_to_create_db_backup_file, Toast.LENGTH_LONG);
                     return;
                 }
-                runOnUiThread(() -> Toast.makeText(this, R.string.database_exported_successfully, Toast.LENGTH_LONG).show());
+                showToast(R.string.database_exported_successfully, Toast.LENGTH_LONG);
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_saf_export_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+                showToast(getString(R.string.database_saf_export_failed) + e.getMessage(), Toast.LENGTH_LONG);
             } finally {
                 filamentDB.getInstance(this);
             }
@@ -1241,9 +1356,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 String dbBaseName = dbFile.getName().replace(".db", "");
                 File dbDestFile = new File(downloadsDir, dbBaseName + ".db");
                 copyFile(dbFile, dbDestFile);
-                runOnUiThread(() -> Toast.makeText(this, R.string.database_exported_successfully_to_downloads_folder, Toast.LENGTH_LONG).show());
+                showToast(R.string.database_exported_successfully_to_downloads_folder, Toast.LENGTH_LONG);
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_legacy_export_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+                showToast(getString(R.string.database_legacy_export_failed) + e.getMessage(), Toast.LENGTH_LONG);
             } finally {
                 filamentDB.getInstance(this);
             }
@@ -1261,7 +1376,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
     private void performSAFImport(Uri sourceUri) {
         if (!sourceUri.toString().toLowerCase().contains("filament_database")) {
-            runOnUiThread(() -> Toast.makeText(this, R.string.incorrect_database_file_selected, Toast.LENGTH_LONG).show());
+            showToast(R.string.incorrect_database_file_selected, Toast.LENGTH_LONG);
             return;
         }
         executorService.execute(() -> {
@@ -1276,9 +1391,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 filamentDB.getInstance(this);
                 setMatDb();
 
-                runOnUiThread(() -> Toast.makeText(this, R.string.database_imported_successfully, Toast.LENGTH_LONG).show());
+                showToast(R.string.database_imported_successfully, Toast.LENGTH_LONG);
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_saf_import_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+                showToast(getString(R.string.database_saf_import_failed) + e.getMessage(), Toast.LENGTH_LONG);
             } finally {
                 if (filamentDB.INSTANCE == null) {
                     filamentDB.getInstance(this);
@@ -1297,11 +1412,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 File sourceDbFile = new File(downloadsDir, dbFile.getName());
                 if (!dbFile.getName().toLowerCase().contains("filament_database")) {
-                    runOnUiThread(() -> Toast.makeText(this, R.string.incorrect_database_file_selected, Toast.LENGTH_LONG).show());
+                    showToast(R.string.incorrect_database_file_selected, Toast.LENGTH_LONG);
                     return;
                 }
                 if (!sourceDbFile.exists()) {
-                    runOnUiThread(() -> Toast.makeText(this, getString(R.string.backup_file_not_found_in_downloads) + sourceDbFile.getName(), Toast.LENGTH_LONG).show());
+                    showToast(getString(R.string.backup_file_not_found_in_downloads) + sourceDbFile.getName(), Toast.LENGTH_LONG);
                     return;
                 }
                 File dbDir = dbFile.getParentFile();
@@ -1312,10 +1427,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 filamentDB.getInstance(this);
                 setMatDb();
 
-                runOnUiThread(() -> Toast.makeText(this, R.string.database_imported_successfully, Toast.LENGTH_LONG).show());
+                showToast(R.string.database_imported_successfully, Toast.LENGTH_LONG);
 
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, getString(R.string.database_legacy_import_failed) + e.getMessage(), Toast.LENGTH_LONG).show());
+                showToast(getString(R.string.database_legacy_import_failed) + e.getMessage(), Toast.LENGTH_LONG);
             } finally {
                 if (filamentDB.INSTANCE == null) {
                     filamentDB.getInstance(this);
@@ -1357,7 +1472,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             if (matDb.getItemCount() > 0) {
                 runOnUiThread(() -> checkPermissionAndStartAction(ACTION_EXPORT));
             } else {
-                runOnUiThread(() -> Toast.makeText(getBaseContext(), R.string.no_data_to_export, Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> showToast(R.string.no_data_to_export, Toast.LENGTH_SHORT));
             }
         }).start());
         builder.setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss());
@@ -1379,7 +1494,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         }
     }
 
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -1387,7 +1501,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 takePicture();
             } else {
-                Toast.makeText(this, R.string.camera_permission_is_required_to_take_photos, Toast.LENGTH_SHORT).show();
+                showToast(R.string.camera_permission_is_required_to_take_photos, Toast.LENGTH_SHORT);
             }
         }
     }
@@ -1397,7 +1511,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             cameraLauncher.launch(null);
         }
     }
-
 
     @SuppressLint("ClickableViewAccessibility")
     private void setupPhotoPicker(ImageView imageView) {
@@ -1635,17 +1748,16 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
             manual.btnread.setOnClickListener(v -> {
                 if (currentTag == null) {
-                    Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
+                    showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
                     return;
                 }
                 NfcA nfcA = NfcA.get(currentTag);
                 if (nfcA != null) {
                     try {
-                        nfcA.connect();
                         byte[] data = new byte[144];
                         ByteBuffer buff = ByteBuffer.wrap(data);
                         for (int page = 4; page <= 36; page += 4) {
-                            byte[] pageData = nfcA.transceive(new byte[] {(byte) 0x30, (byte)page});
+                            byte[] pageData = transceive(nfcA, new byte[] {(byte) 0x30, (byte)page});
                             if (pageData != null) {
                                 buff.put(pageData);
                             }
@@ -1662,14 +1774,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                             manual.txtextmax.setText(String.valueOf(parseNumber(subArray(buff.array(), 82, 2))));
                             manual.txtbedmin.setText(String.valueOf(parseNumber(subArray(buff.array(), 100, 2))));
                             manual.txtbedmax.setText(String.valueOf(parseNumber(subArray(buff.array(), 102, 2))));
-                            manual.txtdiam.setText(String.format("%.2f",parseNumber(subArray(buff.array(),104,2)) / 100.0));
+                            manual.txtdiam.setText(String.format(Locale.getDefault(), "%.2f",parseNumber(subArray(buff.array(),104,2)) / 100.0));
                             manual.txtlength.setText(String.valueOf(parseNumber(Utils.subArray(buff.array(), 106, 2))));
-                            Toast.makeText(getApplicationContext(), R.string.data_read_from_tag, Toast.LENGTH_SHORT).show();
+                            showToast(R.string.data_read_from_tag, Toast.LENGTH_SHORT);
                         } else {
-                            Toast.makeText(getApplicationContext(), R.string.unknown_or_empty_tag, Toast.LENGTH_SHORT).show();
+                            showToast(R.string.unknown_or_empty_tag, Toast.LENGTH_SHORT);
                         }
                     } catch (Exception ignored) {
-                        Toast.makeText(getApplicationContext(), R.string.error_reading_tag, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.error_reading_tag, Toast.LENGTH_SHORT);
                     } finally {
                         try {
                             nfcA.close();
@@ -1677,7 +1789,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         }
                     }
                 } else {
-                    Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+                    showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
                 }
             });
 
@@ -1688,56 +1800,56 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         && manual.txtdiam.getText().length() > 0 && manual.txtlength.getText().length() > 0) {
 
                     if (currentTag == null) {
-                        Toast.makeText(getApplicationContext(), R.string.no_nfc_tag_found, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
                         return;
                     }
                     NfcA nfcA = NfcA.get(currentTag);
                     if (nfcA != null) {
                         try {
-                            nfcA.connect();
-                            nfcAWritePage(nfcA, 4, new byte[]{123, 0, 101, 0});
+                            checkTagAuth(nfcA);
+                            writeTagPage(nfcA, 4, new byte[]{123, 0, 101, 0});
                             byte[] skuData = new byte[20];
                             Arrays.fill(skuData, (byte) 0);
                             System.arraycopy(manual.txtsku.getText().toString().trim().getBytes(), 0, skuData, 0, Math.min(20, manual.txtsku.getText().toString().length()));
-                            nfcAWritePage(nfcA, 5, subArray(skuData, 0, 4));
-                            nfcAWritePage(nfcA, 6, subArray(skuData, 4, 4));
-                            nfcAWritePage(nfcA, 7, subArray(skuData, 8, 4));
-                            nfcAWritePage(nfcA, 8, subArray(skuData, 12, 4));
+                            writeTagPage(nfcA, 5, subArray(skuData, 0, 4));
+                            writeTagPage(nfcA, 6, subArray(skuData, 4, 4));
+                            writeTagPage(nfcA, 7, subArray(skuData, 8, 4));
+                            writeTagPage(nfcA, 8, subArray(skuData, 12, 4));
                             byte[] bndData = new byte[20];
                             Arrays.fill(bndData, (byte) 0);
                             System.arraycopy(manual.txtbrand.getText().toString().trim().getBytes(), 0, bndData, 0, Math.min(20, manual.txtbrand.getText().toString().length()));
-                            nfcAWritePage(nfcA, 10, subArray(bndData, 0, 4));
-                            nfcAWritePage(nfcA, 11, subArray(bndData, 4, 4));
-                            nfcAWritePage(nfcA, 12, subArray(bndData, 8, 4));
-                            nfcAWritePage(nfcA, 13, subArray(bndData, 12, 4));
+                            writeTagPage(nfcA, 10, subArray(bndData, 0, 4));
+                            writeTagPage(nfcA, 11, subArray(bndData, 4, 4));
+                            writeTagPage(nfcA, 12, subArray(bndData, 8, 4));
+                            writeTagPage(nfcA, 13, subArray(bndData, 12, 4));
                             byte[] matData = new byte[20];
                             Arrays.fill(matData, (byte) 0);
                             System.arraycopy(manual.txttype.getText().toString().trim().getBytes(), 0, matData, 0, Math.min(20, manual.txttype.getText().toString().length()));
-                            nfcAWritePage(nfcA, 15, subArray(matData, 0, 4));
-                            nfcAWritePage(nfcA, 16, subArray(matData, 4, 4));
-                            nfcAWritePage(nfcA, 17, subArray(matData, 8, 4));
-                            nfcAWritePage(nfcA, 18, subArray(matData, 12, 4));
+                            writeTagPage(nfcA, 15, subArray(matData, 0, 4));
+                            writeTagPage(nfcA, 16, subArray(matData, 4, 4));
+                            writeTagPage(nfcA, 17, subArray(matData, 8, 4));
+                            writeTagPage(nfcA, 18, subArray(matData, 12, 4));
                             String color = manual.txtcolor.getText().toString().trim().substring(2);
                             String alpha = manual.txtcolor.getText().toString().trim().substring(0, 2);
                             if (color.equals("000000")) {color = "010101";}
-                            nfcAWritePage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color)));
+                            writeTagPage(nfcA, 20, combineArrays(hexToByte(alpha), parseColor(color)));
                             byte[] extTemp = new byte[4];
                             System.arraycopy(numToBytes(Integer.parseInt(manual.txtextmin.getText().toString().trim())), 0, extTemp, 0, 2);
                             System.arraycopy(numToBytes(Integer.parseInt(manual.txtextmax.getText().toString().trim())), 0, extTemp, 2, 2);
-                            nfcAWritePage(nfcA, 24, extTemp);
+                            writeTagPage(nfcA, 24, extTemp);
                             byte[] bedTemp = new byte[4];
                             System.arraycopy(numToBytes(Integer.parseInt(manual.txtbedmin.getText().toString().trim())), 0, bedTemp, 0, 2);
                             System.arraycopy(numToBytes(Integer.parseInt(manual.txtbedmax.getText().toString().trim())), 0, bedTemp, 2, 2);
-                            nfcAWritePage(nfcA, 29, bedTemp);
+                            writeTagPage(nfcA, 29, bedTemp);
                             byte[] filData = new byte[4];
                             System.arraycopy(numToBytes(Integer.parseInt(manual.txtdiam.getText().toString().trim().replace(".", ""))), 0, filData, 0, 2);
                             System.arraycopy(numToBytes(Integer.parseInt(manual.txtlength.getText().toString().trim())), 0, filData, 2, 2);
-                            nfcAWritePage(nfcA, 30, filData);
-                            nfcAWritePage(nfcA, 31, new byte[]{(byte) 232, 3, 0, 0});
+                            writeTagPage(nfcA, 30, filData);
+                            writeTagPage(nfcA, 31, new byte[]{(byte) 232, 3, 0, 0});
                             playBeep();
-                            Toast.makeText(getApplicationContext(), R.string.data_written_to_tag, Toast.LENGTH_SHORT).show();
+                            showToast(R.string.data_written_to_tag, Toast.LENGTH_SHORT);
                         } catch (Exception e) {
-                            Toast.makeText(getApplicationContext(), R.string.error_writing_to_tag, Toast.LENGTH_SHORT).show();
+                            showToast(R.string.error_writing_to_tag, Toast.LENGTH_SHORT);
                         } finally {
                             try {
                                 nfcA.close();
@@ -1745,11 +1857,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                             }
                         }
                     } else {
-                        Toast.makeText(getApplicationContext(), R.string.invalid_tag_type, Toast.LENGTH_SHORT).show();
+                        showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
                     }
                 }
                 else {
-                    Toast.makeText(getApplicationContext(), R.string.invalid_input, Toast.LENGTH_SHORT).show();
+                    showToast(R.string.invalid_input, Toast.LENGTH_SHORT);
                 }
 
             });
@@ -1766,11 +1878,33 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 manual.txttype.setText("PLA");
                 manual.txtsku.setText("");
                 manual.txtcolor.setText("FF0000FF");
-                Toast.makeText(getApplicationContext(), R.string.values_reset, Toast.LENGTH_SHORT).show();
+                showToast(R.string.values_reset, Toast.LENGTH_SHORT);
             });
             customDialog.show();
         } catch (Exception ignored) {
         }
     }
+
+
+    private void showToast(final int message, final int duration) {
+        runOnUiThread(() -> {
+            Toast.makeText(getApplicationContext(), message, duration).show();
+        });
+    }
+
+    private void showToast(final String message, final int duration) {
+        runOnUiThread(() -> {
+            Toast.makeText(getApplicationContext(), message, duration).show();
+        });
+    }
+    
+
+
+
+
+
+
+
+
 
 }
