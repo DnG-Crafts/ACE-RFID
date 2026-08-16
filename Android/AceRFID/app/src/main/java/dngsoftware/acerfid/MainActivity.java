@@ -82,7 +82,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private MatDB matDb;
     private filamentDB rdb;
     private NfcAdapter nfcAdapter;
-    Tag currentTag = null;
+    volatile Tag currentTag = null;
     int tagType;
     ArrayAdapter<String> madapter, sadapter;
     String MaterialName, MaterialWeight = "1 KG", MaterialColor = "FF0000FF";
@@ -110,6 +110,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private DrawerLayout drawerLayout;
     private static final int PERMISSION_REQUEST_CODE = 2;
     private PickerDialogBinding colorDialog;
+    private final Object nfcLock = new Object();
+    private byte[] activeTagUid;
+    private long activeTagLastSeenMs;
+    private static final long TAG_SESSION_TIMEOUT_MS = 5000;
+    private volatile boolean nfcIoInProgress = false;
+    private final Runnable tagSessionTimeoutRunnable = this::checkTagSessionTimeout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -227,7 +233,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             if (nfcAdapter != null && nfcAdapter.isEnabled()) {
                 Bundle options = new Bundle();
                 options.putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250);
-                nfcAdapter.enableReaderMode(this, this, NfcAdapter.FLAG_READER_NFC_A, options);
+                int readerFlags = NfcAdapter.FLAG_READER_NFC_A
+                        | NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+                        | NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS;
+                nfcAdapter.enableReaderMode(this, this, readerFlags, options);
             }
         }catch (Exception ignored) {}
     }
@@ -282,6 +291,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (mainHandler != null) {
+            mainHandler.removeCallbacks(tagSessionTimeoutRunnable);
+        }
         if (executorService != null && !executorService.isShutdown()) {
             executorService.shutdownNow();
         }
@@ -316,35 +328,77 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     @Override
     public void onTagDiscovered(Tag tag) {
         try {
-            mainHandler.post(() -> {
-                byte[] uid = tag.getId();
-                if (uid.length >= 6) {
-                    currentTag = tag;
-                    showToast(getString(R.string.tag_found) + bytesToHex(uid, false), Toast.LENGTH_SHORT);
-                    tagType = getTagType(NfcA.get(currentTag));
-                    main.tagid.setText(bytesToHex(uid, true));
-                    if (tagType == 100) {
-                        main.tagtype.setText(R.string.ultralight_c);
-                    }
-                    else {
-                        main.tagtype.setText(String.format(Locale.getDefault(), "   NTAG%d", tagType));
-                    }
-                    main.lbltagid.setVisibility(View.VISIBLE);
-                    main.lbltagtype.setVisibility(View.VISIBLE);
-                    if (GetSetting(this, "autoread", false)) {
-                        readTag(currentTag);
-                    }
-                }
-                else {
+            if (tag == null) return;
+
+            byte[] uid = tag.getId();
+            if (uid == null || uid.length < 6) {
+                mainHandler.post(() -> {
                     currentTag = null;
                     main.tagid.setText("");
                     main.tagtype.setText("");
                     main.lbltagid.setVisibility(View.INVISIBLE);
                     main.lbltagtype.setVisibility(View.INVISIBLE);
                     showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
+                });
+                return;
+            }
+
+            synchronized (nfcLock) {
+                long now = System.currentTimeMillis();
+                activeTagLastSeenMs = now;
+                currentTag = tag;
+
+                if (activeTagUid != null && Arrays.equals(activeTagUid, uid)) {
+                    scheduleTagSessionTimeoutCheck();
+                    return;
+                }
+                activeTagUid = Arrays.copyOf(uid, uid.length);
+                activeTagLastSeenMs = now;
+                scheduleTagSessionTimeoutCheck();
+            }
+            final byte[] finalUid = Arrays.copyOf(uid, uid.length);
+            mainHandler.post(() -> {
+                showToast(getString(R.string.tag_found) + bytesToHex(finalUid, false), Toast.LENGTH_SHORT);
+                main.tagid.setText(bytesToHex(finalUid, true));
+                if (tagType == 100) {
+                    main.tagtype.setText(R.string.ultralight_c);
+                } else if (tagType == 213 || tagType == 215 || tagType == 216) {
+                    main.tagtype.setText(String.format(Locale.getDefault(), "   NTAG%d", tagType));
+                } else {
+                    main.tagtype.setText("   NFC-A");
+                }
+                main.lbltagid.setVisibility(View.VISIBLE);
+                main.lbltagtype.setVisibility(View.VISIBLE);
+                if (GetSetting(this, "autoread", false)) {
+                    readTag(currentTag);
                 }
             });
         } catch (Exception ignored) {
+        }
+    }
+
+
+    private void scheduleTagSessionTimeoutCheck() {
+        if (mainHandler == null) return;
+        mainHandler.removeCallbacks(tagSessionTimeoutRunnable);
+        mainHandler.postDelayed(tagSessionTimeoutRunnable, TAG_SESSION_TIMEOUT_MS);
+    }
+
+
+    private void checkTagSessionTimeout() {
+        if (mainHandler == null) return;
+
+        synchronized (nfcLock) {
+            if (activeTagUid == null) {
+                return;
+            }
+
+            long ageMs = System.currentTimeMillis() - activeTagLastSeenMs;
+            if (ageMs >= TAG_SESSION_TIMEOUT_MS) {
+                activeTagUid = null;
+            } else {
+                mainHandler.postDelayed(tagSessionTimeoutRunnable, TAG_SESSION_TIMEOUT_MS - ageMs);
+            }
         }
     }
 
@@ -385,6 +439,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         if (tag == null) {
             showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
             return;
+        }
+        synchronized (nfcLock) {
+            nfcIoInProgress = true;
         }
         executorService.execute(() -> {
             NfcA nfcA = NfcA.get(tag);
@@ -435,9 +492,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         if (nfcA.isConnected()) nfcA.close();
                     } catch (Exception ignored) {
                     }
+                    synchronized (nfcLock) {
+                        nfcIoInProgress = false;
+                    }
                 }
             } else {
                 showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
+                synchronized (nfcLock) {
+                    nfcIoInProgress = false;
+                }
             }
         });
     }
@@ -528,10 +591,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
             return;
         }
+        synchronized (nfcLock) {
+            nfcIoInProgress = true;
+        }
         executorService.execute(() -> {
             NfcA nfcA = NfcA.get(tag);
             if (nfcA != null) {
                 try {
+                    tagType = getTagType(nfcA);
                     checkTagAuth(nfcA);
                     writeTagPage(nfcA, 4, new byte[]{123, 0, 101, 0});
                     for (int i = 0; i < 5; i++) { //sku
@@ -575,9 +642,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         if (nfcA.isConnected()) nfcA.close();
                     } catch (Exception ignored) {
                     }
+                    synchronized (nfcLock) {
+                        nfcIoInProgress = false;
+                    }
                 }
             } else {
                 showToast(R.string.invalid_tag_type, Toast.LENGTH_SHORT);
+                synchronized (nfcLock) {
+                    nfcIoInProgress = false;
+                }
             }
         });
     }
@@ -623,6 +696,18 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
 
     private int getTagType(NfcA nfcA) {
+        try {
+            byte[] version = transceive(nfcA, new byte[]{(byte) 0x60});
+            if (version != null && version.length >= 7) {
+                int storageCode = version[6] & 0xFF;
+                if (storageCode == 0x0F) return 213;
+                if (storageCode == 0x11) return 215;
+                if (storageCode == 0x13) return 216;
+            }
+        } catch (Exception ignored) {
+        }
+
+        // Fallback for tags that do not support GET_VERSION (for example some Ultralight variants).
         if (probePage(nfcA, (byte) 220)) return 216;
         if (probePage(nfcA, (byte) 125)) return 215;
         if (probePage(nfcA, (byte) 47)) return 100;
@@ -631,13 +716,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
 
     private boolean probePage(NfcA nfcA, byte pageNumber) {
-        try (nfcA) {
-            try {
-                byte[] result = transceive(nfcA, new byte[]{(byte) 0x30, pageNumber});
-                if (result != null && result.length == 16) {
-                    return true;
-                }
-            } catch (Exception ignored) {}
+        try {
+            byte[] result = transceive(nfcA, new byte[]{(byte) 0x30, pageNumber});
+            if (result != null && result.length == 16) {
+                return true;
+            }
         } catch (Exception ignored) {}
         return false;
     }
@@ -665,9 +748,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             }
 
             executorService.execute(() -> {
+                synchronized (nfcLock) {
+                    nfcIoInProgress = true;
+                }
                 NfcA nfcA = NfcA.get(tag);
                 if (nfcA != null) {
                     try {
+                        tagType = getTagType(nfcA);
                         byte[] ccBytes;
                         if (tagType == 216) {
                             ccBytes = new byte[]{(byte) 0xE1, (byte) 0x10, (byte) 0x6D, (byte) 0x00};
@@ -694,9 +781,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                             if (nfcA.isConnected()) nfcA.close();
                         } catch (Exception ignored) {
                         }
+                        synchronized (nfcLock) {
+                            nfcIoInProgress = false;
+                        }
                     }
                 } else {
                     showToast(R.string.no_nfc_tag_found, Toast.LENGTH_SHORT);
+                    synchronized (nfcLock) {
+                        nfcIoInProgress = false;
+                    }
                 }
             });
 
